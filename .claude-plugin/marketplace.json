@@ -28,12 +28,6 @@
       "source": "./cmo-dotnet",
       "description": "TODO",
       "version": "0.1.0"
-    },
-    {
-      "name": "cmo-ops",
-      "source": "./cmo-ops",
-      "description": "TODO",
-      "version": "0.1.0"
     }
   ]
 }
