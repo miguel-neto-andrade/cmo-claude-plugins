@@ -1,0 +1,33 @@
+{
+  "name": "cmo-claude-plugins",
+  "owner": {
+    "name": "C-Mo Solutions",
+    "email": "engineering@c-mo.solutions"
+  },
+  "plugins": [
+    {
+      "name": "cmo-python",
+      "source": "./cmo-python",
+      "description": "TODO",
+      "version": "0.1.0"
+    },
+    {
+      "name": "cmo-frontend",
+      "source": "./cmo-frontend",
+      "description": "TODO",
+      "version": "0.1.0"
+    },
+    {
+      "name": "cmo-dotnet",
+      "source": "./cmo-dotnet",
+      "description": "TODO",
+      "version": "0.1.0"
+    },
+    {
+      "name": "cmo-ops",
+      "source": "./cmo-ops",
+      "description": "TODO",
+      "version": "0.1.0"
+    }
+  ]
+}
