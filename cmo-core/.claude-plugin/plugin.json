@@ -1,7 +1,7 @@
 {
   "name": "cmo-core",
+  "description": "General code architecture, code review, and git operations — coding standards, security review, code-review and project-analysis agents.",
   "version": "0.1.0",
-  "description": "TODO",
   "author": {
     "name": "C-Mo Solutions",
     "email": "engineering@c-mo.solutions"

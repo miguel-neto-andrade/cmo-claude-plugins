@@ -1,0 +1,16 @@
+{
+	"description": "Core plugin hooks — skill-loading reminder on every prompt",
+	"hooks": {
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "${CLAUDE_PLUGIN_ROOT}/hooks/skill-reminder.sh",
+						"timeout": 5
+					}
+				]
+			}
+		]
+	}
+}

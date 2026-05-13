@@ -1,0 +1,24 @@
+#!/bin/bash
+# Skill-loading reminder — injected on every user prompt submission.
+# Outputs a <system-reminder> block that becomes authoritative context for the model.
+#
+# MAINTAINER NOTE: When adding a new skill to any plugin's skills/ directory,
+# update the skill list below so the model knows about it.
+
+cat <<'EOF'
+<system-reminder>
+You MUST load the appropriate skill(s) via the Skill tool BEFORE writing, reviewing, or modifying any code. If you have not loaded the relevant skills yet, do so NOW before proceeding.
+
+Invoke as: Skill(skill="<name>") — e.g., Skill(skill="git-operations")
+
+Available skills and when to load them:
+- coding-standards — ANY code work (universal, load alongside language-specific skills)
+- git-operations — ANY git/GitHub operation (commit, push, branch, PR, issue)
+- security-review — Security audits, auth/input validation review
+- python-project-setup — Python projects (FastAPI/Flask/CLI), pytest, uv/poetry
+- vue-conventions — Vue 3 + TypeScript frontend work
+- dotnet-conventions — C# / .NET Core (ASP.NET Core, EF Core)
+
+Multiple skills often apply together (e.g., coding-standards + dotnet-conventions for .NET work). Load ALL that match.
+</system-reminder>
+EOF
