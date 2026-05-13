@@ -1,23 +1,23 @@
 ---
 name: pr
-description: "Push the current branch and open a pull request against the default branch, then attempt to merge it only if existing branch-protection rules allow — never bypassing."
+description: "Push the current branch and open a pull request against the default branch. Never merges — a teammate reviews and merges manually."
 ---
 
-# Create Pull Request (and merge when allowed)
+# Create Pull Request
 
-Push the current branch, open a PR against the default branch, and merge it — but only if existing branch-protection rules already permit a normal merge. Never bypass.
+Push the current branch and open a PR against the default branch. The PR is **always** left open for a teammate to review and merge — this command never merges on its own.
 
 ## Safety rules (non-negotiable)
 
 1. **Invoking `/pr` is consent for committing any uncommitted work on the current branch.** Don't ask — go straight to step 1. (Outside `/pr`, the normal "no commits without consent" rule still applies.)
 2. **Never** create a PR from the default branch. Stop and report.
-3. **Never** pass `--admin`, retry with a different strategy, or otherwise relax checks. If a normal merge is blocked, leave the PR open and report.
+3. **Never** merge the PR (no `gh pr merge`, no `--admin`, no auto-merge flag). The whole point of this command is that a human reviews and merges.
 4. **PR body must** include `## Summary` and `## Code changes` sections.
 5. Follow the `git-operations` skill for everything else (Conventional Commits, no `add -A`, no `--no-verify`, no force-push, no `.claude/`, no AI attribution).
 
 ## Procedure
 
-Run each step in order. If any step before the merge fails, stop and report. If the merge step itself is refused by branch protection, that is the expected fallback — leave the PR open and report it clearly.
+Run each step in order. If any step fails, stop and report.
 
 ### 1. Commit any uncommitted work
 
@@ -81,61 +81,21 @@ EOF
 )"
 ```
 
-Capture the PR URL from `gh`'s output and extract the PR number as `PR`.
+Capture the PR URL from `gh`'s output.
 
-### 8. Attempt a non-bypassing merge
+### 8. Report
 
-```bash
-gh pr merge "$PR" --squash --delete-branch || true
-MERGED_STATE=$(gh pr view "$PR" --json state -q .state)
-```
-
-**Verify by PR state, not by `gh`'s exit code.** From a worktree where the default branch is checked out elsewhere, `gh pr merge` exits 1 *after* the remote merge already succeeded (only local cleanup failed). Trusting the exit code would falsely report "blocked by protection" on a PR that just landed.
-
-If `MERGED_STATE` is `MERGED`, go to step 9. Otherwise go to step 10 — never retry with `--admin` or a different strategy.
-
-### 9. If merged: finalize cleanup
-
-`gh pr merge --delete-branch` covers this on a normal checkout, but may skip parts from a worktree. Finish each idempotently — don't report a failure for work `gh` already completed.
-
-```bash
-# Remote branch: delete only if it still exists.
-if git ls-remote --exit-code --heads origin "$CURRENT" >/dev/null 2>&1; then
-  git push origin --delete "$CURRENT"
-fi
-
-git checkout "$DEFAULT_BRANCH" 2>/dev/null || true
-git pull --ff-only
-
-# Local branch: delete only if it still exists.
-if git show-ref --verify --quiet "refs/heads/$CURRENT"; then
-  git branch -d "$CURRENT"
-fi
-```
-
-`-d` only — never `-D`. After this step both the remote and local feature branches MUST be gone. If `git branch -d` itself fails (e.g. the branch exists but is not fully merged locally), report the error verbatim — do not force-delete.
-
-### 10. Report
-
-If merged, end with this shape:
+End with this shape:
 
 ```
-PR:           <pr-url> (merged)
-Merge commit: <sha-on-default>
-Local:        on <DEFAULT_BRANCH>, deleted <branch>
-```
-
-If left open because protection rules blocked the merge, end with:
-
-```
-PR:           <pr-url> (open)
-Merge:        blocked by branch protection — <one-line reason from gh>
-Next:         resolve the blocker (review / checks / etc.) and merge manually
+PR:     <pr-url> (open — awaiting review)
+Branch: <current-branch> pushed to origin
+Next:   teammate reviews and merges
 ```
 
 ## Out of scope
 
+- Merging the PR (use the GitHub UI after review)
 - Amending or rebasing existing commits
-- Bypassing branch protection (`--admin`, dismissing reviews, disabling checks)
 - Editing or closing existing PRs
-- Merge strategies other than squash — run `gh pr merge` manually
+- Deleting the feature branch (the teammate's merge will do this, or `/clear-repo` afterwards)
