@@ -28,6 +28,12 @@
       "source": "./cmo-dotnet",
       "description": "TODO",
       "version": "0.1.0"
+    },
+    {
+      "name": "cmo-firmware",
+      "source": "./cmo-firmware",
+      "description": "TODO",
+      "version": "0.1.0"
     }
   ]
 }

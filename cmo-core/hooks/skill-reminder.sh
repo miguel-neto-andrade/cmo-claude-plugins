@@ -18,6 +18,7 @@ Available skills and when to load them:
 - python-project-setup — Python projects (FastAPI/Flask/CLI), pytest, uv/poetry
 - vue-conventions — Vue 3 + TypeScript frontend work
 - dotnet-conventions — C# / .NET Core (ASP.NET Core, EF Core)
+- firmware-conventions — Embedded firmware work (C/C++, PlatformIO, CMake)
 
 Multiple skills often apply together (e.g., coding-standards + dotnet-conventions for .NET work). Load ALL that match.
 </system-reminder>
