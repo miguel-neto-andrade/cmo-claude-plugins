@@ -3,44 +3,15 @@ description: Create a Jira task in the SW project, sized and assigned, in the cu
 argument-hint: <title> :: <description>
 ---
 
-Create a Jira task for a piece of work using the **Jira Cloud REST API** with an API token (no MCP dependency). Arguments: `<title> :: <description>` — title and description separated by ` :: ` (e.g., `Jump-to-snippet input :: Adds a numeric input in the annotate view that jumps to snippet N. ~half a day of work.`).
+Create a Jira task for a piece of work using the **Jira Cloud REST API** with an API token. Arguments: `<title> :: <description>` — title and description separated by ` :: ` (e.g., `Jump-to-snippet input :: Adds a numeric input in the annotate view that jumps to snippet N. ~half a day of work.`).
 
 Intended to be called both standalone and from `/feature` before implementation begins.
 
-## One-time setup (per developer)
-
-1. Create a Jira API token at https://id.atlassian.com/manage-profile/security/api-tokens.
-2. Export the two required env vars (add to `~/.zshrc`, `~/.envrc`, or your secrets manager):
-
-   ```bash
-   export JIRA_EMAIL="your.email@c-mo.solutions"
-   export JIRA_API_TOKEN="<token from step 1>"
-   ```
-
-3. Make sure `.claude/jira-config.json` exists in the project. Template:
-
-   ```json
-   {
-     "siteDomain": "c-mo.atlassian.net",
-     "projectKey": "SW",
-     "boardId": 42,
-     "assigneeAccountId": "5b10ac8d82e05b22cc7d4ef5",
-     "issueTypeName": "Task",
-     "sprintFieldId": "customfield_10020",
-     "storyPointsFieldId": "customfield_10016",
-     "checkpointKey": null,
-     "storyPointScale": [1, 2, 3, 5, 8]
-   }
-   ```
-
-   - `boardId`: Scrum board the active sprint belongs to (URL: `/jira/software/c/projects/SW/boards/<id>`)
-   - `assigneeAccountId`: GET `https://<siteDomain>/rest/api/3/myself` to find your own, or `/user/search?query=<email>`
-   - `sprintFieldId` / `storyPointsFieldId`: usually `customfield_10020` / `customfield_10016` on Jira Cloud — confirm with `/rest/api/3/field`
-   - `checkpointKey`: optional parent (Epic key) to link new tasks under; `null` to skip
+> **Setup required.** This command relies on `$JIRA_EMAIL`, `$JIRA_API_TOKEN`, and a `.claude/jira-config.json` file. If any are missing, see `cmo-core/README.md` → Setup and abort with a short error pointing the user there.
 
 ## Auth
 
-All API calls use HTTP Basic Auth with the email + token. Pattern:
+All API calls use HTTP Basic Auth with the email + token:
 
 ```bash
 curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
@@ -48,11 +19,11 @@ curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
      "https://<siteDomain>/rest/api/3/..."
 ```
 
-If `JIRA_EMAIL` or `JIRA_API_TOKEN` is empty, abort with: "JIRA_EMAIL and JIRA_API_TOKEN must be set — see the Setup section of /create-jira-task."
+If `JIRA_EMAIL` or `JIRA_API_TOKEN` is empty, abort with: `JIRA_EMAIL and JIRA_API_TOKEN must be set — see cmo-core/README.md → Setup.`
 
 ## Steps
 
-1. **Read config**: Load `.claude/jira-config.json`. Extract `siteDomain`, `projectKey`, `boardId`, `assigneeAccountId`, `issueTypeName`, `sprintFieldId`, `storyPointsFieldId`, `checkpointKey`, `storyPointScale`.
+1. **Read config**: Load `.claude/jira-config.json`. Extract `siteDomain`, `projectKey`, `boardId`, `assigneeAccountId`, `issueTypeName`, `sprintFieldId`, `storyPointsFieldId`, `checkpointKey`, `storyPointScale`. If the file is missing, abort with: `.claude/jira-config.json not found — see cmo-core/README.md → Setup.`
 
 2. **Parse arguments**: Split on ` :: ` into `<title>` and `<description>`. If no `::` is given, treat the full input as the title and use a one-line summary of the surrounding context as the description.
 
@@ -61,7 +32,6 @@ If `JIRA_EMAIL` or `JIRA_API_TOKEN` is empty, abort with: "JIRA_EMAIL and JIRA_A
 4. **Resolve target sprint** — query the board's sprints directly:
 
    ```bash
-   # Active sprint
    curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
         "https://<siteDomain>/rest/agile/1.0/board/<boardId>/sprint?state=active"
    ```
@@ -110,11 +80,9 @@ If `JIRA_EMAIL` or `JIRA_API_TOKEN` is empty, abort with: "JIRA_EMAIL and JIRA_A
 7. **Link to checkpoint if needed** — only if `checkpointKey` is set and `parentLink` is false:
 
    ```bash
-   # List link types and pick "Relates" (or the closest equivalent)
    curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
         "https://<siteDomain>/rest/api/3/issueLinkType"
 
-   # Create the link
    curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
         -H "Content-Type: application/json" \
         -X POST "https://<siteDomain>/rest/api/3/issueLink" \
