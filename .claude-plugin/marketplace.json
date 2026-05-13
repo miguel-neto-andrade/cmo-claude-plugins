@@ -6,6 +6,12 @@
   },
   "plugins": [
     {
+      "name": "cmo-core",
+      "source": "./cmo-core",
+      "description": "TODO",
+      "version": "0.1.0"
+    },
+    {
       "name": "cmo-python",
       "source": "./cmo-python",
       "description": "TODO",
