@@ -15,7 +15,7 @@ Available skills and when to load them:
 - coding-standards — ANY code work (universal, load alongside language-specific skills)
 - git-operations — ANY git/GitHub operation (commit, push, branch, PR, issue)
 - security-review — Security audits, auth/input validation review
-- python-project-setup — Python projects (FastAPI/Flask/CLI), pytest, uv/poetry
+- python-conventions — Python ≥ 3.10 (naming, type hints, docstrings, pytest, ruff/mypy, project layout)
 - vue-conventions — Vue 3 + TypeScript frontend work
 - dotnet-conventions — C# / .NET Core (ASP.NET Core, EF Core)
 - firmware-conventions — Embedded firmware work (C/C++, PlatformIO, CMake)
