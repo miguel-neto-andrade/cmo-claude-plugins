@@ -19,12 +19,14 @@ Conventions for Python ≥ 3.10 in C-Mo repositories. Built on PEP 8 with the mo
 - One variable per statement, but tuple unpacking is fine: `a, b = some_func()`.
 - English everywhere — names, comments, docstrings, log messages.
 
-## Type hints (mandatory)
+## Type hints (required)
 
-- Every function signature has type hints for parameters **and** return value.
+**Type hints are required on every function, method, and public class attribute.** Untyped code is not acceptable in new contributions — review will reject it.
+
 - Use modern PEP 604 / PEP 585 syntax: `list[int]` not `List[int]`, `str | None` not `Optional[str]`.
-- Public class attributes are annotated.
-- Type-check with **mypy strict** (or **pyright strict**) in CI.
+- Type-check with **mypy strict** (or **pyright strict**) and run it in CI; the build must fail on type errors.
+- `# type: ignore` requires a one-line justification: `# type: ignore[<rule>] — <why>`.
+- `Any` is a smell — prefer a `Protocol`, `TypedDict`, or generic. Use `object` if you genuinely don't know the type.
 
 ```python
 def calculate_total_price(item_price: float, quantity: int) -> float:
@@ -110,7 +112,9 @@ project/
 | Lint | **Ruff** (replaces flake8 + isort + pyupgrade + most pylint) |
 | Type check | **mypy strict** or **pyright strict** |
 | Test | **pytest** |
-| Dependencies | **uv** (preferred) or poetry |
+| Dependencies | **uv** for new projects; legacy repos may stay on `pip` |
+
+**On dependency tooling:** use `uv` whenever you're starting a new Python project. Older repos still on `pip` + `requirements.txt` are fine — don't churn them just to switch resolvers. Don't introduce `poetry` or `pipenv` to a repo that doesn't already have them.
 
 Run before pushing:
 
