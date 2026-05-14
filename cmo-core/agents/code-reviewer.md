@@ -28,7 +28,7 @@ Based on the file extensions and markers in the diff, load the matching skill an
 |---|---|
 | `*.cs`, `*.csproj`, `*.sln` | `dotnet-conventions` |
 | `*.vue`, `*.ts`, `*.tsx` | `vue-conventions` |
-| `*.py`, `pyproject.toml`, `requirements.txt` | `python-project-setup` |
+| `*.py`, `pyproject.toml`, `requirements.txt` | `python-conventions` |
 | `*.c`, `*.h`, `*.cpp`, `*.hpp`, `platformio.ini`, `CMakeLists.txt` | `firmware-conventions` |
 
 If a matched skill is not installed, skip it silently. If found, read it and include a **Skill Compliance** section in the review output checking the diff against the skill's rules.
