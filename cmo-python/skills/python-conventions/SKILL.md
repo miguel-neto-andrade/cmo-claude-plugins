@@ -24,9 +24,8 @@ Conventions for Python ≥ 3.10 in C-Mo repositories. Built on PEP 8 with the mo
 **Type hints are required on every function, method, and public class attribute.** Untyped code is not acceptable in new contributions — review will reject it.
 
 - Use modern PEP 604 / PEP 585 syntax: `list[int]` not `List[int]`, `str | None` not `Optional[str]`.
-- Type-check with **mypy strict** (or **pyright strict**) and run it in CI; the build must fail on type errors.
 - `# type: ignore` requires a one-line justification: `# type: ignore[<rule>] — <why>`.
-- `Any` is a smell — prefer a `Protocol`, `TypedDict`, or generic. Use `object` if you genuinely don't know the type.
+- `Any` is usually a smell — prefer a `Protocol`, `TypedDict`, or generic. Exception: dynamic data before it's been parsed (e.g., the immediate return of `json.loads`) — type it `Any` and narrow at the boundary (see **Boundary types** below).
 
 ```python
 def calculate_total_price(item_price: float, quantity: int) -> float:
@@ -38,6 +37,52 @@ def calculate_total_price(item_price: float, quantity: int) -> float:
     """
     return item_price * quantity
 ```
+
+### mypy / pyright strict — pin the exact flags
+
+"Strict" isn't a fixed target across versions; pin the minimum set in the project's config:
+
+- `disallow_untyped_defs`
+- `disallow_incomplete_defs`
+- `disallow_any_explicit`
+- `disallow_untyped_decorators`
+- `warn_return_any`
+- `warn_unused_ignores`
+- `no_implicit_optional`
+- `strict_equality`
+
+Run as part of `make lint`; CI must fail on type errors.
+
+### Useful type-system features (use when they fit)
+
+- `Final` for module-level constants — `MAX_RETRIES: Final = 3`
+- `Literal["draft", "published", "archived"]` for enum-like string params
+- `@overload` for functions with multiple call signatures
+- `TypeGuard[X]` for runtime narrowing in validators
+- `Self` (Python 3.11+) for fluent / return-self methods
+- PEP 695 syntax (Python 3.12+) — `def f[T](x: T) -> T:` and `type Vec = list[float]`
+
+## Boundary types
+
+At any system boundary, parse incoming data into a typed value object **before** passing it deeper into the code. Boundaries include:
+
+- HTTP request bodies and query params
+- JSON / YAML / CSV file parsing
+- External API responses
+- Message queue / event payloads
+- Subprocess output being interpreted as structured data
+
+**Use:**
+
+- `pydantic.BaseModel` when you need validation, coercion, or serialization
+- `@dataclass(frozen=True, slots=True)` for internal value objects after the boundary
+
+**Don't:**
+
+- Pass raw `dict[str, Any]` or `list[dict]` past the boundary
+- Re-validate the same data five layers deep — validate once at the edge, trust the typed value inside
+
+This single rule catches more real bugs than all the other typing rules combined.
 
 ## Comments and docstrings
 
