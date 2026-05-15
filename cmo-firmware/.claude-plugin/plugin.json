@@ -1,7 +1,7 @@
 {
   "name": "cmo-firmware",
   "version": "0.1.0",
-  "description": "TODO",
+  "description": "Embedded firmware plugin (C/C++) — target-agnostic conventions, sensor-integration workflow, and host-side testing skills. Covers STM32 / ESP32 / nRF / RP2040 / AVR with CMake, PlatformIO, ESP-IDF, or Zephyr. Reviewer agent and /fw-build command are scaffolds.",
   "author": {
     "name": "C-Mo Solutions",
     "email": "engineering@c-mo.solutions"
