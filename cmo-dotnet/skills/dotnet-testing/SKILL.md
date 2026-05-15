@@ -1,57 +1,49 @@
 ---
 name: dotnet-testing
-description: Testing standards for any C# / .NET project at C-Mo — Web API, Razor / MVC, Blazor, background services. Covers unit, integration, end-to-end, and performance tiers; xUnit + `WebApplicationFactory<Program>` + EF Core test DBs (SQLite-in-memory / Testcontainers); CQRS handler patterns; Razor view-rendering and form round-trip patterns when applicable. Use when writing, reviewing, or scaffolding tests; when wiring fixtures, mocks (RabbitMQ, S3, SMTP), or test CI. Pairs with `dotnet-conventions`.
+description: Testing standards for any C# / .NET project — Web API, Razor / MVC, Blazor, worker services, libraries. Covers unit, integration, functional/e2e (Playwright), and performance (BenchmarkDotNet) tiers; xUnit + `WebApplicationFactory<Program>`; Testcontainers for DB / broker / object-store fidelity; CQRS handler patterns; Razor view-rendering and form round-trip probes; test independence and parallelism. Use when writing, reviewing, or scaffolding tests; when wiring fixtures and mocks; when designing test CI. Pairs with `dotnet-conventions`.
 ---
 
 # .NET Testing Standards
 
-Tiered testing for any C-Mo .NET project — Web APIs, Razor / MVC sites, Blazor apps, background services. The skill is grounded in current practice in `cloud-backend-subsystems` (API-only) and extended with Razor-specific patterns for projects that render views. Sections that only apply to one project type are marked.
+Tiered testing for any .NET project. Each tier has a dedicated test project, a single runner (xUnit v3), and a clear scope.
 
-Load this skill whenever writing tests, scaffolding test projects, adding test dependencies, designing test CI, or reviewing a PR that touches `tests/`.
-
-The full pyramid:
-
-| Tier | Project suffix | Scope | Stack (target) |
+| Tier | Project suffix | Scope | Stack |
 |---|---|---|---|
-| Unit | `*.Tests` (Unit-style classes) | Pure logic — handlers, validators, services, helpers. No host, no I/O. EF only via `InMemory`. | xUnit v3 + AwesomeAssertions + NSubstitute |
-| Integration | `*.Tests` (Integration-style classes) | Real ASP.NET Core pipeline in-process via `WebApplicationFactory<Program>`. Real DB (SQLite-in-memory **or** Testcontainers PostgreSQL). Catches policy/auth, validators, model binding, MediatR pipeline, EF migrations. | xUnit v3 + `Microsoft.AspNetCore.Mvc.Testing` + Testcontainers (target) or `Microsoft.Data.Sqlite` (transitional) |
-| Functional / e2e | external compose | Real running stack via `docker-compose.e2e.yml` (`make deploy-e2e`). Cross-service flows, RabbitMQ events, MinIO, mailpit. | Driven from outside .NET; no in-repo runner yet |
-| Performance | `*.Benchmarks` | Micro-benchmarks of hot paths. Add only when a hot path is identified. | BenchmarkDotNet console app |
+| Unit | `*.UnitTests` | Pure logic — handlers, validators, services, value objects, helpers. No host, no I/O. | xUnit v3 + AwesomeAssertions + NSubstitute |
+| Integration | `*.IntegrationTests` | Real ASP.NET Core pipeline in-process via `WebApplicationFactory<Program>`. Real DB / broker / object store via **Testcontainers**. Covers policy/auth, validators, model binding, MediatR pipeline, EF migrations. **Every API endpoint must be exercised here with all its scenarios.** | xUnit v3 + `Microsoft.AspNetCore.Mvc.Testing` + Testcontainers |
+| Functional / e2e | `*.FunctionalTests` | **Browser-based end-to-end tests via Playwright** — only for projects that serve a web UI (Razor / Blazor / MVC views / SPA backends). Login flows, JS interactions, redirects. Web API projects do not have a functional tier. | xUnit v3 + Microsoft.Playwright |
+| Performance | `*.Benchmarks` | Micro-benchmarks of hot paths (view rendering, hot service methods, allocation hotspots). | BenchmarkDotNet console app |
 
-C-Mo currently keeps unit and integration tests in a single `*.Tests` project per src project (e.g. `CmoCloudBackend.AnnotationsAPI.Tests`). That stays the norm — do **not** split into `*.UnitTests` / `*.IntegrationTests` unless the project's test wall-clock or CI cadence forces it. Use class-level naming (`*HandlerTest` vs `*IntegrationTest`) and traits to distinguish tiers within the same project.
-
-Always start with a handler-level unit test for new MediatR logic, add an integration test the moment auth/policy, validators, or DB constraints are involved, and add a benchmark only when a hot path is identified.
+Split into separate projects from day one. Mixing tiers in a single `*.Tests` project costs you CI flexibility, runtime, and the ability to gate slow tests behind a different cadence.
 
 ---
 
 ## Hard rules (apply to every test, every project)
 
-- **Requirements traceability — required for regulated projects, optional for internal-only projects.**
-  - **Required**: medical-device software, customer-facing backends, anything under an IEC 62304 / regulatory audit trail (e.g. `cloud-backend-subsystems`). Every test method carries a `[Trait(Traits.Requirement, "SW-XXXX")]` linking it to a **software requirement** — not a Jira task / sprint ticket. The `SW-XXXX` code is a requirement ID; where requirements live (Jira issues typed "Requirement", an IEC 62304 trace matrix, a separate spec) is a project decision. The trait lives next to `[Fact]` / `[Theory]`. Tests that don't map to a single requirement (route-sanity probes, log-assertion teardowns, infra smoke tests) use `[Trait(Traits.Requirement, "SW-INFRA")]` or another agreed sentinel — never omit the trait in regulated projects.
-  - **Optional**: internal tools, developer tooling, throwaway experiments, build/CI helpers. Skip the trait entirely — don't fake requirement IDs to "look compliant". If the project might later become customer-facing, add traceability at that point (not before).
-  - The project's top-level README or `CLAUDE.md` should state which mode applies. If it's silent and the project ships software that runs on a medical device or customer environment, **assume traceability is required**.
-- **Every test project ships a `Usings.cs`** at the project root (see template below) with `global using Xunit;` and `global using Moq;` (or `global using NSubstitute;` for new projects). A `Traits.cs` ships **only** in projects that need traceability (see above) or that use other trait keys (`Category`, `Speed`, etc.).
-- **Test class name = `{SubjectClass}Test`** (singular, matches C-Mo's repo convention — not `Tests`). Test method name = `Method_Condition_Result` (e.g. `Approve_PendingInvoice_SetsStatusApproved`).
-- **Test files mirror the src folder structure**: `src/CmoCloudBackend.AnnotationsAPI/Features/AnnotationProject/Commands/CreateAnnotationProject/CreateAnnotationProjectCommandHandler.cs` → `tests/CmoCloudBackend.AnnotationsAPI.Tests/Features/AnnotationProject/Commands/CreateAnnotationProjectCommandHandlerTest.cs`.
-- **Nullable reference types enabled** (`<Nullable>enable</Nullable>`) — same rule as production code. Use `string?` where AngleSharp / framework APIs return nullable; do not blanket-`!` framework returns.
-- **`async`/`await` all the way down**. Pass a `CancellationToken` to every async API that accepts one — on xUnit v3, that's `TestContext.Current.CancellationToken`; on xUnit v2 use `CancellationToken.None` (do not invent a token source per test).
+- **Tests are independent and run in parallel.** No test depends on another test's state, ordering, or side effects. Each test owns its data — seed what it needs, clean up nothing (the fixture or per-test DB does that). xUnit runs collections in parallel by default; do **not** disable parallelism with `[CollectionDefinition(DisableParallelization = true)]` unless you have a concrete reason and a comment explaining it. If two tests interact, one of them is buggy.
+- **Test class naming `{Subject}Tests`**, test method `Method_Condition_Result` (e.g. `Approve_PendingInvoice_SetsStatusApproved`). Test files mirror the source folder structure.
+- **Nullable reference types enabled** (`<Nullable>enable</Nullable>`). Test code may use `string?` and friends where framework / library APIs return nullable; that's the only exception to the "annotate everything explicitly" rule from `dotnet-conventions`.
+- **`async`/`await` all the way down.** Pass `TestContext.Current.CancellationToken` (xUnit v3) to every async API that accepts one — the `xUnit1051` analyzer warns when you don't.
 - **No `Thread.Sleep`, no arbitrary delays.** If a test is flaky on timing, the production code has a race. Fix the race, not the test.
+- **One assertion concept per test.** Multiple `.Should()` calls are fine if they verify the same logical outcome.
+- **Requirements traceability — required for regulated projects, optional for internal-only projects.**
+  - **Required** (medical-device software, customer-facing backends, anything under an IEC 62304 / regulatory audit trail): every test method carries `[Trait(Traits.Requirement, "SW-XXXX")]` linking it to a **software requirement** — not a Jira task / sprint ticket. Where requirements live (Jira "Requirement" issues, an IEC 62304 trace matrix, a separate spec) is a project decision. Tests that don't map to a single requirement (route-sanity probes, log-assertion teardowns) use `[Trait(Traits.Requirement, "SW-INFRA")]` or another agreed sentinel.
+  - **Optional** (internal tools, dev tooling, throwaway experiments): skip the trait entirely — don't fake requirement IDs to "look compliant".
+  - If the project's README / `CLAUDE.md` is silent and the project ships software to a regulated context, **assume traceability is required**.
 
 ---
 
 ## SDK & runner setup
 
-### Target state — xUnit v3 on Microsoft Testing Platform
+### `global.json` — opt into the Microsoft Testing Platform
 
-On **.NET 10 SDK and later**, `dotnet test` no longer falls back to VSTest. New projects (and projects migrating off xUnit v2) must opt in to MTP at the repo root:
+On **.NET 10 SDK and later**, `dotnet test` no longer falls back to VSTest. Every solution using xUnit v3 / MTP must opt in at the repo root:
 
 ```jsonc
-// global.json
 {
   "sdk": {
-    "version": "10.0.101",
-    "rollForward": "latestMajor",
-    "allowPrerelease": false
+    "version": "10.0.100",
+    "rollForward": "latestFeature"
   },
   "test": {
     "runner": "Microsoft.Testing.Platform"
@@ -59,374 +51,237 @@ On **.NET 10 SDK and later**, `dotnet test` no longer falls back to VSTest. New 
 }
 ```
 
-Without the `"test"` block, the MTP runner errors out with:
-`error : Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on .NET 10 SDK and later. If you use dotnet test, you should opt-in to the new dotnet test experience.`
+Without the `"test"` block, the runner errors with `Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on .NET 10 SDK and later.`
 
-`cloud-backend-subsystems` is currently on xUnit v2 + VSTest fallback. New repos start on v3 + MTP. When migrating an existing repo: bump every test csproj to `xunit.v3` + `xunit.analyzers`, drop `xunit.runner.visualstudio` and `XunitXml.TestLogger`, add the `"test"` block to `global.json`, and switch any positional `dotnet test <path>` to `dotnet test --project <path>` (MTP does not accept the positional form).
+### `Program.cs` must be discoverable
 
-### Current xUnit v2 baseline (`cloud-backend-subsystems`)
-
-Existing projects keep xUnit v2 until the next non-trivial test-infra touch. The current packages:
-
-```xml
-<PackageReference Include="xunit" Version="2.9.3" />
-<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-  <PrivateAssets>all</PrivateAssets>
-</PackageReference>
-<PackageReference Include="XunitXml.TestLogger" Version="8.0.0" />
-<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
-<PackageReference Include="coverlet.collector" Version="8.0.1" />
-```
-
-### `Program.cs` discoverability for `WebApplicationFactory`
-
-`WebApplicationFactory<TEntryPoint>` needs `TEntryPoint` to be a real class. .NET 10 templates use top-level statements, which puts the implicit `Program` class in the global namespace. Add this **at the end of `Program.cs`**, in a braced namespace:
+`WebApplicationFactory<TEntryPoint>` requires `TEntryPoint` to be a real class. Top-level statements put `Program` in the global namespace and out of test code's reach. Append this to the end of `Program.cs`, in a braced namespace:
 
 ```csharp
 app.Run();
 
-namespace CmoCloudBackend.AnnotationsAPI
+namespace MyApp.Web
 {
     public partial class Program { }
 }
 ```
 
-File-scoped namespaces (`namespace X;`) **don't work** here — CS8956: a file-scoped namespace can't follow top-level statements. Use the braced form.
+File-scoped namespaces (`namespace MyApp.Web;`) **don't work** here — CS8956: a file-scoped namespace can't follow top-level statements. Always reference the type as `WebApplicationFactory<MyApp.Web.Program>` in tests so it doesn't collide with a sibling `Program` (e.g. in `*.Benchmarks`).
 
-Tests then reference it as `WebApplicationFactory<Program>` — each `*.Tests` project references exactly one src project, so the short form is unambiguous. If a project ever adds a `*.Benchmarks` sibling with its own `Program`, switch to the fully-qualified form (`WebApplicationFactory<CmoCloudBackend.AnnotationsAPI.Program>`) in both.
-
-### Test csproj boilerplate every project needs
+### Test csproj boilerplate every tier needs
 
 ```xml
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>13</LangVersion>
-    <IsPackable>false</IsPackable>
-    <!-- Required by Microsoft.AspNetCore.Mvc.Testing for static-asset manifests on .NET 10+ -->
-    <PreserveCompilationContext>true</PreserveCompilationContext>
-    <!-- On xUnit v3 / MTP, the test host is an executable: -->
-    <!-- <OutputType>Exe</OutputType> -->
-  </PropertyGroup>
-
-  <!-- Package references — see tier-specific sections below -->
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\CmoCloudBackend.AnnotationsAPI\CmoCloudBackend.AnnotationsAPI.csproj" />
-  </ItemGroup>
-
-</Project>
+<PropertyGroup>
+  <TargetFramework>net10.0</TargetFramework>
+  <!-- Test SDK does NOT enable ImplicitUsings by default — without this you get CS0246 on Task, HttpClient, IEnumerable. -->
+  <ImplicitUsings>enable</ImplicitUsings>
+  <Nullable>enable</Nullable>
+  <IsPackable>false</IsPackable>
+  <IsTestProject>true</IsTestProject>
+  <!-- MTP test hosts are executables. -->
+  <OutputType>Exe</OutputType>
+</PropertyGroup>
 ```
-
-`<ImplicitUsings>` and `<Nullable>` are not on by default in test SDKs even though they're on in src — without them you get CS0246 on `Task`/`HttpClient` and lose NRT warnings.
 
 ---
 
 ## Shared per-project files
 
-These files live at the test project root and apply to every test in the assembly.
+### `Usings.cs` *(every project)*
 
-### `Traits.cs` — trait keys *(only in projects that need traits)*
-
-Ship this only when the project (a) requires requirements traceability or (b) uses other trait keys for filtering (`Category`, `Speed`, etc.). Internal-only projects without traceability can skip the file entirely.
+Global usings for things every test in the assembly needs.
 
 ```csharp
-namespace CmoCloudBackend.AnnotationsAPI.Tests;
+global using Xunit;
+global using AwesomeAssertions;
+global using NSubstitute;
+```
+
+### `Traits.cs` *(only in projects that use traits)*
+
+Ship this when the project requires requirements traceability **or** uses trait keys for filtering (`Category`, `Speed`, etc.). Internal-only projects without traceability can skip the file.
+
+```csharp
+namespace MyApp.UnitTests;
 
 public static class Traits {
     public const string Requirement = "requirement";
-    // Add other keys (Category, Speed, etc.) here — do not invent ad-hoc strings.
+    // Add other keys here — never invent ad-hoc strings.
 }
 ```
-
-### `Usings.cs` — global usings *(every project)*
-
-```csharp
-// xUnit v2 baseline
-global using Xunit;
-global using Moq;
-
-// xUnit v3 target (replace Moq line with NSubstitute when migrating)
-// global using Xunit;
-// global using NSubstitute;
-```
-
-Anything else (FluentAssertions / AwesomeAssertions, `Microsoft.EntityFrameworkCore`, etc.) goes in the test file itself — global usings are for things touched by nearly every test.
 
 ---
 
-## Tier 1 — Unit Tests (handlers, validators, services, helpers)
+## Tier 1 — Unit Tests
 
-Pure, fast, no I/O beyond `Microsoft.EntityFrameworkCore.InMemory` for handler tests that need a `DbContext`. Target: a few ms each.
-
-### When InMemory is OK and when it isn't
-
-`Microsoft.EntityFrameworkCore.InMemory`:
-
-- ✅ Fast enough that handler tests stay sub-millisecond.
-- ✅ Fine for testing handler logic that does `Add` / `SaveChanges` / simple `Where`.
-- ❌ Does **not** enforce foreign keys, unique constraints, or any other relational invariant.
-- ❌ Does **not** translate queries — uses LINQ-to-Objects. `string.Compare`, `ILIKE`, `JSON_VALUE`, raw SQL, anything provider-specific gives you a different result than prod (PostgreSQL).
-- ❌ Does **not** run migrations.
-
-Rule of thumb: **InMemory for handler-only unit tests where the queries are trivial**. The moment the test depends on FK enforcement, a unique index, a raw SQL expression, or a migration, promote to an **integration test** (SQLite-in-memory or Testcontainers).
+Pure, fast, no I/O. Target: < 1 ms each.
 
 ### Stack
 
-- **xUnit v3** (target) or xUnit v2 (current baseline) — same setup as the SDK section above.
-- **`xunit.analyzers`** — catches swapped `Assert.Equal` args, missing `await` on async asserts, etc. (`xunit.v3.analyzers` does not exist — the same package serves v3.)
-- **AwesomeAssertions** (target) for readable assertions. Apache-2.0 fork of FluentAssertions v7, drop-in API-compatible. Do **not** use FluentAssertions v8+ — Xceed commercial license. Current code uses `Assert.Equal` / `Assert.True` from xUnit, which is also fine; the rule is "no FluentAssertions v8+", not "must use AwesomeAssertions".
-- **NSubstitute** (target) for new code, **Moq + MockQueryable.Moq** (current) for existing test projects. Don't mix the two within a single test class.
-- **`Microsoft.EntityFrameworkCore.InMemory`** when a handler needs a `DbContext`.
+- **xUnit v3** on MTP — reference `xunit.v3`. Do **not** add `xunit.v3.mtp-v2` separately; `xunit.v3` already pulls in `xunit.v3.mtp-v1`, and the two conflict at compile time.
+- **`xunit.analyzers`** (not `xunit.v3.analyzers` — that package doesn't exist) — catches swapped `Assert.Equal` args, missing `await`, empty `[Theory]` data, etc.
+- **AwesomeAssertions** for readable assertions (`result.Should().Be(...)`). Apache-2.0 fork of FluentAssertions v7, drop-in API-compatible. Do **not** use FluentAssertions v8+ — Xceed commercial license.
+- **NSubstitute** for mocks/stubs. Prefer over Moq — terser, no lambdas for properties.
+- **`Microsoft.Extensions.Diagnostics.Testing`** for `FakeLoggerProvider` when asserting log output.
 
-### Csproj fragment (xUnit v2 baseline)
+### Csproj fragment
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.5" />
-  <PackageReference Include="MockQueryable.Moq" Version="10.0.5" />
-  <PackageReference Include="Moq" Version="4.20.72" />
-  <PackageReference Include="xunit" Version="2.9.3" />
-  <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    <PrivateAssets>all</PrivateAssets>
-  </PackageReference>
-  <PackageReference Include="coverlet.collector" Version="8.0.1">
-    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    <PrivateAssets>all</PrivateAssets>
-  </PackageReference>
-  <PackageReference Include="XunitXml.TestLogger" Version="8.0.0" />
+  <PackageReference Include="xunit.v3" />
+  <PackageReference Include="xunit.analyzers" />
+  <PackageReference Include="AwesomeAssertions" />
+  <PackageReference Include="NSubstitute" />
+</ItemGroup>
+<ItemGroup>
+  <ProjectReference Include="..\..\src\MyApp.Core\MyApp.Core.csproj" />
 </ItemGroup>
 ```
 
-### Pattern — MediatR command handler with InMemory `DbContext`
+### Pattern — service with NSubstitute
 
 ```csharp
-using CmoCloudBackend.AnnotationsAPI.Features.AnnotationProject.Commands.CreateAnnotationProject;
-using CmoCloudBackend.DAL;
-using MapsterMapper;
-using Mapster;
-using Microsoft.EntityFrameworkCore;
+public class InvoiceServiceTests {
+    private readonly IInvoiceRepository _repository = Substitute.For<IInvoiceRepository>();
+    private readonly InvoiceService _sut;
 
-namespace CmoCloudBackend.AnnotationsAPI.Tests.Features.AnnotationProject.Commands;
+    public InvoiceServiceTests() => _sut = new InvoiceService(_repository);
 
-public class CreateAnnotationProjectCommandHandlerTest {
-    private static ApplicationDbContext NewContext() {
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase($"annotations-{Guid.NewGuid()}")
+    [Fact]
+    public async Task Approve_PendingInvoice_SetsStatusApproved() {
+        var invoice = new Invoice { Status = InvoiceStatus.Pending };
+
+        await _sut.ApproveAsync(invoice, TestContext.Current.CancellationToken);
+
+        invoice.Status.Should().Be(InvoiceStatus.Approved);
+        await _repository.Received(1).SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Approve_NonPendingInvoice_Throws() {
+        var invoice = new Invoice { Status = InvoiceStatus.Approved };
+
+        var act = () => _sut.ApproveAsync(invoice, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+}
+```
+
+### Pattern — MediatR command handler with EF Core InMemory
+
+`Microsoft.EntityFrameworkCore.InMemory` is **only** acceptable for trivial handler tests where the queries are basic CRUD. It does not enforce foreign keys, unique constraints, or any relational invariant, and it does not translate queries (it's LINQ-to-Objects). The moment the test depends on FK enforcement, a unique index, a raw SQL expression, or a migration — promote it to an integration test (Testcontainers).
+
+```csharp
+public class CreateInvoiceCommandHandlerTests {
+    private static AppDbContext NewContext() {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase($"db-{Guid.NewGuid()}")
             .Options;
-        return new ApplicationDbContext(options);
+        return new AppDbContext(options);
     }
 
-    private static Mapper NewMapper() => new(TypeAdapterConfig.GlobalSettings);
-
     [Fact]
-    [Trait(Traits.Requirement, "SW-4821")]
-    public async Task Handle_PersistsProjectWithProvidedWindow_AndReturnsItsId() {
+    public async Task Handle_PersistsInvoice_AndReturnsId() {
         using var db = NewContext();
-        var handler = new CreateAnnotationProjectCommandHandler(db, NewMapper());
+        var handler = new CreateInvoiceCommandHandler(db);
 
-        var command = new CreateAnnotationProjectCommand {
-            MonitoringSessionId = Guid.NewGuid(),
-            CreatedByUserId = Guid.NewGuid()
-        };
+        var id = await handler.Handle(
+            new CreateInvoiceCommand { CustomerId = Guid.NewGuid(), Amount = 100m },
+            TestContext.Current.CancellationToken);
 
-        var id = await handler.Handle(command, CancellationToken.None);
-
-        var stored = await db.AnnotationProjects.SingleAsync();
-        Assert.Equal(id, stored.Id);
-        Assert.Equal(command.MonitoringSessionId, stored.MonitoringSessionId);
+        var stored = await db.Invoices.SingleAsync(TestContext.Current.CancellationToken);
+        stored.Id.Should().Be(id);
+        stored.Amount.Should().Be(100m);
     }
 }
 ```
 
-Each test gets a unique `InMemory` database name — never share a name across tests in the same class, or test order leaks state.
-
-### Pattern — pure service with `Moq`
-
-```csharp
-public class S3ServiceTest {
-    private readonly Mock<IAmazonS3> _amazonS3Client = new();
-    private readonly S3Service _sut;
-
-    public S3ServiceTest() {
-        var settings = new S3ServiceSettings { BucketName = "cmo-tests", PreSignedTtlInMinutes = 10 };
-        _sut = new S3Service(
-            _amazonS3Client.Object,
-            Mock.Of<IOptions<S3ServiceSettings>>(o => o.Value == settings),
-            Mock.Of<ILogger<S3Service>>());
-    }
-
-    [Fact]
-    [Trait(Traits.Requirement, "SW-806")]
-    public async Task PutAsync_PutFileToS3() {
-        // ... arrange a stream, act, assert + Verify the S3 client received the expected request
-    }
-}
-```
-
-### Pattern — `IQueryable` mock with `MockQueryable.Moq`
-
-Use when a service depends on an `IQueryable<TEntity>` from a repo or `DbSet`-like abstraction. Without `MockQueryable.Moq`, async LINQ extensions throw `NotImplementedException`.
-
-```csharp
-var users = new List<User> { /* … */ }.BuildMock();
-var dbContext = new Mock<ApplicationDbContext>();
-dbContext.Setup(d => d.Users).Returns(users);
-```
+Each test gets a unique InMemory database name (`$"db-{Guid.NewGuid()}"`) — never share a name across tests in the same class, or you defeat the parallelism / independence rule.
 
 ### Rules
 
-- **One assertion concept per test.** Multiple `Assert.X` / `.Should()` calls are fine if they verify the same logical outcome.
+- **No `WebApplicationFactory`, no real DB, no `HttpClient`** in unit tests — that's the integration tier.
 - **`[Theory]` + `[InlineData]`** for parameterised tests. Never branch on input inside the test body.
-- **No `WebApplicationFactory`, no `HttpClient`, no SQL container** in unit tests — that's the integration tier.
-- **Pass `TestContext.Current.CancellationToken`** to async APIs on xUnit v3. The `xUnit1051` analyzer warns when you don't, and the warning becomes meaningful if a test hangs.
+- **Use a builder helper or `Bogus`** for non-trivial test data. Avoid hand-rolled object literals scattered across files.
 
 ---
 
-## Tier 2 — Integration Tests (the workhorse tier for C-Mo)
+## Tier 2 — Integration Tests
 
-Runs the real ASP.NET Core pipeline in-process via `WebApplicationFactory<Program>`. This is where most of C-Mo's testing happens — catches broken policies, broken validators, broken routes, broken EF migrations, and broken MediatR pipeline wiring.
+Runs the real ASP.NET Core pipeline in-process via `WebApplicationFactory<MyApp.Web.Program>`. This is the workhorse tier — catches broken policies, broken validators, broken routes, broken EF migrations, and broken MediatR wiring.
+
+**Coverage rule**: **every API endpoint shall be tested at this tier by calling it directly with all its scenarios** — happy path, validation failures, authorisation failures (each role / policy / requirement), not-found, conflict, and any domain-specific error path. Endpoint coverage is the definition of "done" for new controllers.
 
 ### Stack
 
-- **xUnit v3** (target) or xUnit v2 (current).
+- **xUnit v3** (same setup as Tier 1).
 - **`Microsoft.AspNetCore.Mvc.Testing`** — provides `WebApplicationFactory<TEntryPoint>` and `TestServer`.
-- **Test database**:
-  - **Target — Testcontainers PostgreSQL** for new projects. Highest fidelity with prod (real `pg_catalog`, real FK enforcement, real SQL translation, real migrations). One container per fixture, started in `IAsyncLifetime.InitializeAsync`, killed in `DisposeAsync`.
-  - **Current — `Microsoft.Data.Sqlite` `DataSource=:memory:`** (in `cloud-backend-subsystems`). Faster than Testcontainers, no Docker required, but PostgreSQL-specific features (`jsonb`, snake-case-vs-double-quoted-identifiers, partial indexes) silently behave differently.
-  - **Never** `Microsoft.EntityFrameworkCore.InMemory` for integration tests — see InMemory pitfalls above.
+- **Testcontainers** for **every external dependency** that has one (database, message broker, object store, mail server). Use the provider that matches production — `Testcontainers.PostgreSql`, `Testcontainers.MsSql`, `Testcontainers.MySql`, `Testcontainers.Redis`, `Testcontainers.RabbitMq`, LocalStack for S3, etc. One container per fixture, started in `IAsyncLifetime.InitializeAsync`, killed in `DisposeAsync`. Do not substitute SQLite-in-memory for a real provider — it lies about provider-specific behaviour (`jsonb`, snake-case identifiers, partial indexes, real FK timing, …) and the test gives you false confidence.
+- **AngleSharp** *(Razor / MVC / Blazor projects only)* for HTML parsing and CSS-selector assertions on rendered views.
+- **`Respawn`** for fast per-test DB cleanup — truncates user tables while keeping the schema and migration state, far cheaper than dropping and recreating the database.
 - **`Microsoft.Extensions.Diagnostics.Testing`** for `FakeLoggerProvider` — assert no `Warning+` logs leak from a successful request.
-- **`Respawn`** (target, when on Testcontainers) for fast per-test DB cleanup. Skip on SQLite-in-memory — each fixture spins up its own connection anyway.
-- **`AngleSharp`** *(Razor / MVC projects only)* for HTML parsing and CSS-selector assertions on rendered views. Prefer AngleSharp over HtmlAgilityPack.
 
-### Csproj fragment (current SQLite-in-memory baseline)
+### Csproj fragment
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.5" />
-  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
-  <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
-  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
-  <PackageReference Include="MockQueryable.Moq" Version="10.0.5" />
-  <PackageReference Include="Moq" Version="4.20.72" />
-  <PackageReference Include="xunit" Version="2.9.3" />
-  <!-- xunit.runner.visualstudio, coverlet.collector, XunitXml.TestLogger as in Tier 1 -->
+  <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  <PackageReference Include="xunit.v3" />
+  <PackageReference Include="xunit.analyzers" />
+  <PackageReference Include="AwesomeAssertions" />
+  <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  <PackageReference Include="Testcontainers.PostgreSql" />
+  <PackageReference Include="Respawn" />
+  <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+  <!-- Razor / Blazor only: -->
+  <PackageReference Include="AngleSharp" />
+</ItemGroup>
+<ItemGroup>
+  <ProjectReference Include="..\..\src\MyApp.Web\MyApp.Web.csproj" />
 </ItemGroup>
 ```
 
-For Testcontainers add `<PackageReference Include="Testcontainers.PostgreSql" />` and drop the two Sqlite packages.
+### Pattern — `WebApplicationFactory` + Testcontainers fixture
 
-### Pattern — `BaseIntegrationTest` (consolidate; do not copy-paste)
-
-C-Mo's repo currently has the same `WithWebHostBuilder` / `ConfigureTestServices` / SQLite setup duplicated across `BaseIntegrationTest`, `BasicIntegrationTest`, `CreateAnnotationProjectIntegrationTest`, and more. Every new integration test should extend a **single** `BaseIntegrationTest` per project. The template below covers the common case; specialise via override / virtual hook only when a test genuinely needs different wiring.
+Consolidate the host wiring in **one** base fixture per project. Tests extend it; they don't duplicate `WithWebHostBuilder` blocks.
 
 ```csharp
-using System.Data.Common;
-using System.Security.Claims;
-using CmoCloudBackend.DAL;
-using CmoCloudBackend.DAL.Models.Authentication;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using RabbitMQ.Client;
+public class WebFactoryFixture : WebApplicationFactory<MyApp.Web.Program>, IAsyncLifetime {
+    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder()
+        .WithImage("postgres:16-alpine")
+        .Build();
+    private Respawner _respawner = default!;
 
-namespace CmoCloudBackend.AnnotationsAPI.Tests;
-
-public abstract class BaseIntegrationTest : IClassFixture<WebApplicationFactory<Program>> {
-    private readonly WebApplicationFactory<Program> _factory;
-
-    /// <summary>
-    /// The factory built by the last call to <see cref="CreateClient"/>.
-    /// Tests resolve scoped services (e.g. <c>ApplicationDbContext</c>) from
-    /// this factory to seed data shared with the HTTP pipeline — the SQLite
-    /// connection is registered as a singleton, so both sides see the same DB.
-    /// </summary>
-    protected WebApplicationFactory<Program> Factory { get; private set; } = null!;
-
-    protected BaseIntegrationTest(WebApplicationFactory<Program> factory) {
-        _factory = factory;
+    public async ValueTask InitializeAsync() {
+        await _db.StartAsync();
+        using var scope = Services.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await ctx.Database.MigrateAsync();
+        _respawner = await Respawner.CreateAsync(_db.GetConnectionString(),
+            new RespawnerOptions { DbAdapter = DbAdapter.Postgres });
     }
 
-    protected HttpClient CreateClient(string role, string? institutionId, bool validLicense = true) =>
-        CreateAuthenticatedClient(role, institutionId, validLicense).Client;
+    public Task ResetDatabaseAsync() => _respawner.ResetAsync(_db.GetConnectionString());
 
-    protected (HttpClient Client, WebApplicationFactory<Program> Factory) CreateAuthenticatedClient(
-        string role, string? institutionId, bool validLicense = true, Guid? userId = null) {
-        var factory = _factory.WithWebHostBuilder(builder => {
-            builder.ConfigureTestServices(services => {
-                ReplaceDatabaseWithSqlite(services);
-                ReplaceRabbitMqWithMock(services);
-                AddTestAuth(services, role, institutionId, validLicense, userId);
-            });
-            builder.UseEnvironment("Testing");
-        });
-
-        using var scope = factory.Services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.Migrate();
-
-        Factory = factory;
-        return (factory.CreateDefaultClient(), factory);
+    public override async ValueTask DisposeAsync() {
+        await base.DisposeAsync();
+        await _db.DisposeAsync();
     }
 
-    private static void ReplaceDatabaseWithSqlite(IServiceCollection services) {
-        services.RemoveAll<IDbContextOptionsConfiguration<ApplicationDbContext>>();
-        services.AddSingleton<DbConnection>(_ => {
-            var connection = new SqliteConnection("DataSource=:memory:");
-            connection.Open();
-            return connection;
-        });
-        services.AddDbContext<ApplicationDbContext>((container, options) => {
-            var connection = container.GetRequiredService<DbConnection>();
-            options.UseSqlite(connection).UseSnakeCaseNamingConvention();
-            options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-        });
-    }
-
-    private static void ReplaceRabbitMqWithMock(IServiceCollection services) {
-        services.AddSingleton<IConnectionFactory>(_ => {
-            var connection = new Mock<IConnection>();
-            connection.Setup(c => c.CreateChannelAsync(It.IsAny<CreateChannelOptions>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.FromResult(Mock.Of<IChannel>()));
-            var factory = new Mock<IConnectionFactory>();
-            factory.Setup(f => f.CreateConnectionAsync(It.IsAny<CancellationToken>()))
-                .Returns(Task.FromResult(connection.Object));
-            return factory.Object;
-        });
-    }
-
-    private static void AddTestAuth(
-        IServiceCollection services, string role, string? institutionId, bool validLicense, Guid? userId) {
-        services.AddAuthentication(defaultScheme: "TestScheme")
-            .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("TestScheme", options => {
-                var claims = new List<Claim> { new(ClaimTypes.Role, role) };
-                if (institutionId != null) claims.Add(new(UserClaim.CLAIM_INSTITUTION_ID, institutionId));
-                claims.Add(new(ClaimTypes.NameIdentifier, (userId ?? Guid.NewGuid()).ToString()));
-                claims.Add(new(UserClaim.CLAIM_LICENSE_EXPIRATION_DATE,
-                    validLicense ? "2529161570" : "1642870370"));
-                // Smuggle claims through `Events` so the handler can read them per request.
-                // It's an awkward channel but avoids extra DI plumbing.
-                options.Events = claims;
-            });
+    protected override void ConfigureWebHost(IWebHostBuilder builder) {
+        builder.UseSetting("ConnectionStrings:Default", _db.GetConnectionString());
+        builder.ConfigureServices(services => services.AddLogging(b => b.AddFakeLogging()));
+        builder.UseEnvironment("Testing");
     }
 }
 ```
 
-### Pattern — `TestAuthHandler`
+Call `await Factory.ResetDatabaseAsync()` in the base class's constructor — xUnit v3 creates a new test class instance per test, so this gives every test a clean DB without paying the cost of dropping and recreating it.
 
-Lives once per test project (not per test file). Reads the claim list smuggled through `AuthenticationSchemeOptions.Events`.
+### Pattern — test auth handler (when the endpoint requires auth)
+
+Auth bypass via a global flag is never acceptable. Inject a test auth handler so the real authorisation pipeline runs.
 
 ```csharp
 public class TestAuthHandler(
@@ -435,198 +290,213 @@ public class TestAuthHandler(
     UrlEncoder encoder)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder) {
 
-    private readonly List<Claim> _claims = (options.Get("TestScheme").Events as List<Claim>)!;
+    public const string SchemeName = "Test";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync() {
-        var identity = new ClaimsIdentity(_claims, "Test");
-        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), "TestScheme");
+        // The test sets these via a request header (or a per-scope claim accessor).
+        if (!Request.Headers.TryGetValue("X-Test-Role", out var role)) {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+        var claims = new List<Claim> {
+            new(ClaimTypes.NameIdentifier, Request.Headers["X-Test-UserId"].ToString()),
+            new(ClaimTypes.Role, role.ToString()),
+        };
+        var ticket = new AuthenticationTicket(
+            new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName)), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
 }
 ```
 
-### Pattern — JSON API integration test (Web API projects)
+Register it in the fixture's `ConfigureWebHost` via `services.AddAuthentication(...).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(...)` (override the default scheme name). Tests then set `client.DefaultRequestHeaders.Add("X-Test-Role", "Admin")` per scenario.
+
+### Pattern — Web API endpoint integration test
 
 ```csharp
-public class CreateAnnotationProjectIntegrationTest : BaseIntegrationTest {
-    public CreateAnnotationProjectIntegrationTest(WebApplicationFactory<Program> factory) : base(factory) { }
+public class CreateInvoiceEndpointTests : IClassFixture<WebFactoryFixture> {
+    private readonly WebFactoryFixture _factory;
+
+    public CreateInvoiceEndpointTests(WebFactoryFixture factory) {
+        _factory = factory;
+    }
+
+    private HttpClient AuthedClient(string role) {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", role);
+        client.DefaultRequestHeaders.Add("X-Test-UserId", Guid.NewGuid().ToString());
+        return client;
+    }
 
     [Fact]
-    [Trait(Traits.Requirement, "SW-4821")]
-    public async Task Create_AsAnnotatorsManager_ReturnsCreated() {
-        var callerId = Guid.NewGuid();
-        var (client, factory) = CreateAuthenticatedClient(Role.AnnotatorsManager, institutionId: null, userId: callerId);
+    public async Task Create_AsAdmin_ReturnsCreated() {
+        await _factory.ResetDatabaseAsync();
+        var client = AuthedClient("Admin");
+        var body = JsonContent.Create(new CreateInvoiceCommand { CustomerId = Guid.NewGuid(), Amount = 100m });
 
-        using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var sessionId = await SeedMonitoringSessionAsync(db, callerId);
+        var response = await client.PostAsync("/api/v1/invoices", body, TestContext.Current.CancellationToken);
 
-        var body = JsonContent.Create(new CreateAnnotationProjectCommand {
-            MonitoringSessionId = sessionId,
-            Name = "Integration Test Project",
-        });
-
-        var response = await client.PostAsync("/api/v1/projects", body);
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var id = await response.Content.ReadFromJsonAsync<Guid>();
-        Assert.NotEqual(Guid.Empty, id);
-
-        var stored = await db.AnnotationProjects.SingleAsync(p => p.Id == id);
-        Assert.Equal(sessionId, stored.MonitoringSessionId);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var id = await response.Content.ReadFromJsonAsync<Guid>(TestContext.Current.CancellationToken);
+        id.Should().NotBe(Guid.Empty);
     }
 
     [Theory]
-    [InlineData(Role.InstitutionUser)]
-    [InlineData(Role.InstitutionAdmin)]
-    [InlineData(Role.DataAnnotator)]
-    [Trait(Traits.Requirement, "SW-4821")]
-    public async Task Create_WithNonManagerRole_ReturnsForbidden(string callerRole) {
-        var (client, _) = CreateAuthenticatedClient(callerRole, institutionId: null);
-        var body = JsonContent.Create(new CreateAnnotationProjectCommand { MonitoringSessionId = Guid.NewGuid() });
+    [InlineData("Viewer")]
+    [InlineData("Auditor")]
+    public async Task Create_AsNonAdmin_ReturnsForbidden(string role) {
+        var client = AuthedClient(role);
+        var body = JsonContent.Create(new CreateInvoiceCommand { CustomerId = Guid.NewGuid(), Amount = 100m });
 
-        var response = await client.PostAsync("/api/v1/projects", body);
+        var response = await client.PostAsync("/api/v1/invoices", body, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
-}
-```
-
-### Razor / MVC patterns *(skip for Web-API-only projects)*
-
-For projects that render server-side views, integration tests get a much sharper edge: tag helpers (`asp-action`, `asp-controller`, `asp-for`) **silently render the wrong (or empty) output** when broken, so you only learn about it when a user clicks a dead link or submits a form that doesn't bind. The view-rendering and form round-trip tests below catch those failures at PR time.
-
-#### Pattern — view rendering with AngleSharp (catches broken `asp-action` / `asp-controller`)
-
-```csharp
-public class InvoicesViewTests : BaseIntegrationTest {
-    public InvoicesViewTests(WebApplicationFactory<Program> factory) : base(factory) { }
 
     [Fact]
-    [Trait(Traits.Requirement, "SW-XXXX")]
-    public async Task Index_RendersDetailsLink_WithResolvedRoute() {
-        var client = CreateClient(Role.InstitutionUser, institutionId: null);
+    public async Task Create_WithMissingCustomer_ReturnsBadRequest() {
+        var client = AuthedClient("Admin");
+        var body = JsonContent.Create(new { Amount = 100m }); // CustomerId missing
 
-        var response = await client.GetAsync("/Invoices");
-        response.EnsureSuccessStatusCode();
+        var response = await client.PostAsync("/api/v1/invoices", body, TestContext.Current.CancellationToken);
 
-        var html = await response.Content.ReadAsStringAsync();
-        var document = await BrowsingContext.New(Configuration.Default)
-            .OpenAsync(req => req.Content(html));
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 
-        var link = document.QuerySelector("a.invoice-details-link");
+    [Fact]
+    public async Task Create_Unauthenticated_ReturnsUnauthorized() {
+        var client = _factory.CreateClient(); // no test-auth header
+        var body = JsonContent.Create(new CreateInvoiceCommand { CustomerId = Guid.NewGuid(), Amount = 100m });
 
-        Assert.NotNull(link);
-        // Asserting on the resolved href catches typos in asp-action / asp-controller:
-        // a broken tag helper renders href="" instead of throwing.
-        Assert.StartsWith("/Invoices/Details/", link!.GetAttribute("href"));
+        var response = await client.PostAsync("/api/v1/invoices", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }
 ```
 
-#### Pattern — `asp-for` probe (catches misnamed form bindings)
+This is the **minimum** scenario coverage for a write endpoint: success, authorisation failure for every non-allowed role, validation failure, and unauthenticated. Read endpoints add not-found and (where relevant) authorisation-by-resource-ownership scenarios. **No endpoint ships without this coverage.**
 
-Strongly-typed views (`@model SomeDto`) get **build-time** validation — Razor compiles the view and `asp-for="NotARealProperty"` becomes `CS1061` at build, so the runtime probe is partially redundant. It still has value for:
-- Weakly-typed views without a declared `@model`.
-- Dynamic property access via `HtmlHelper` (`Html.NameFor`, `ViewData`-driven forms).
-- Setups where Razor compile-on-build is disabled (some `Directory.Build.props` toggles).
-- Catching the case where a model property is deleted and a stale build cache hides the failure locally.
+### Pattern — route-sanity probe
+
+A single test that walks every action descriptor and asks `LinkGenerator` to resolve a URL. Cheap, no HTTP — catches dead routes (broken `[Route]` attributes, tag-helper `asp-action` typos) before they hit a view or a redirect.
 
 ```csharp
-[Theory]
-[InlineData("/Invoices/Create")]
-[InlineData("/Users/Edit/1")]
-[Trait(Traits.Requirement, "SW-XXXX")]
-public async Task FormInputs_AllHaveNameAttributes(string url) {
-    var client = CreateClient(Role.InstitutionAdmin, institutionId: null);
+public class RouteSanityTests : IClassFixture<WebFactoryFixture> {
+    private readonly WebFactoryFixture _factory;
+    public RouteSanityTests(WebFactoryFixture factory) => _factory = factory;
 
-    var response = await client.GetAsync(url);
+    [Fact]
+    public void AllActionDescriptors_ResolveToAUrl() {
+        using var scope = _factory.Services.CreateScope();
+        var actions = scope.ServiceProvider.GetRequiredService<IActionDescriptorCollectionProvider>();
+        var links = scope.ServiceProvider.GetRequiredService<LinkGenerator>();
+
+        foreach (var d in actions.ActionDescriptors.Items.OfType<ControllerActionDescriptor>()) {
+            var url = links.GetPathByAction(action: d.ActionName, controller: d.ControllerName);
+            url.Should().NotBeNullOrEmpty(
+                $"{d.ControllerName}.{d.ActionName} has no resolvable route");
+        }
+    }
+}
+```
+
+### Pattern — log-assertion teardown (no silent server errors)
+
+Fail any integration test that logs at `Warning+` during the request. Strong "no silent server errors" guarantee.
+
+```csharp
+public abstract class IntegrationTestBase : IClassFixture<WebFactoryFixture>, IDisposable {
+    protected WebFactoryFixture Factory { get; }
+    protected HttpClient Client { get; }
+    private readonly FakeLogCollector _logs;
+
+    protected IntegrationTestBase(WebFactoryFixture factory) {
+        Factory = factory;
+        Client = factory.CreateClient();
+        _logs = factory.Services.GetRequiredService<FakeLogCollector>();
+        _logs.Clear();
+    }
+
+    public void Dispose() {
+        var problems = _logs.GetSnapshot()
+            .Where(r => r.Level >= LogLevel.Warning)
+            .ToList();
+        problems.Should().BeEmpty("the request logged warnings or errors");
+    }
+}
+```
+
+### Razor / MVC / Blazor patterns *(skip for Web-API-only projects)*
+
+For projects that render server-side views (or hybrid Blazor with server rendering), tag helpers and form bindings silently render wrong / empty output when broken — you only learn about it at runtime. These two patterns catch the breakage at PR time.
+
+#### View rendering with AngleSharp (catches broken `asp-action` / `asp-controller`)
+
+```csharp
+[Fact]
+public async Task Index_RendersDetailsLink_WithResolvedRoute() {
+    var response = await Client.GetAsync("/Invoices", TestContext.Current.CancellationToken);
     response.EnsureSuccessStatusCode();
 
     var document = await BrowsingContext.New(Configuration.Default)
-        .OpenAsync(req => req.Content(await response.Content.ReadAsStringAsync()));
+        .OpenAsync(req => req.Content(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)));
 
-    var unnamed = document.QuerySelectorAll("form :is(input, select, textarea)")
-        .Where(e => string.IsNullOrEmpty(e.GetAttribute("name")))
-        .Where(e => e.GetAttribute("type") != "submit" && e.GetAttribute("type") != "button")
-        .ToList();
-
-    Assert.True(unnamed.Count == 0,
-        "every form input bound via asp-for must produce a name attribute");
+    var link = document.QuerySelector("a.invoice-details-link");
+    // A broken asp-action renders href="" instead of throwing — asserting on the
+    // resolved href is the cheapest way to catch it.
+    link!.GetAttribute("href").Should().StartWith("/Invoices/Details/");
 }
 ```
 
-#### Pattern — form round-trip test (catches binding-prefix and source-attribute bugs)
+#### Form round-trip test (catches binding-prefix / wrong `[FromX]` source / culture parse bugs)
 
-The view-rendering test catches broken `asp-action` links. This one catches broken **form submissions** — three real bugs at once:
+Three real bugs at once:
 
-1. **Prefix mismatch.** `<input asp-for="@abc.Property" />` renders as `name="abc.Property"`. The model binder uses the action's *parameter name* as the prefix, so `Create(InvoiceForm form)` looks for `form.Property` — fields starting with `abc.` are ignored, the DTO comes back default. Renaming the action parameter silently breaks the form.
-2. **Wrong binding source.** `Create([FromQuery] InvoiceForm payload)` expects query-string values; form-encoded POST data won't bind. Same for `[FromBody]` (expects JSON), `[FromRoute]`, etc.
-3. **Culture-sensitive parsing.** ASP.NET Core model binding parses decimals and dates with the request's `CurrentCulture`, not invariant — `"42.50"` binds to `0m` on a machine where the system culture is `pt-PT` (comma decimal). Pin the culture in the fixture or tests pass on one machine and fail on another.
+1. **Prefix mismatch.** `<input asp-for="@abc.Property" />` renders `name="abc.Property"`; the model binder uses the action's parameter name as the prefix. Renaming the parameter silently breaks the form.
+2. **Wrong binding source.** `Create([FromQuery] InvoiceForm payload)` expects query-string values; form-encoded POST data won't bind.
+3. **Culture-sensitive parsing.** Model binding parses decimals and dates with the request's `CurrentCulture`, not invariant — `"42.50"` binds to `0m` on a `pt-PT` machine.
 
-The test renders the form, harvests every `name` attribute the renderer actually emitted, POSTs those exact names back, and asserts the action's parameter was populated. Strong signals at three layers:
-
-- **Black-box**: `RedirectToAction` returns 302; a validation re-render returns 200. The status code alone tells you whether binding + validation succeeded.
-- **White-box**: a test-only `IActionFilter` captures `context.ActionArguments` by correlation-id header, so the test can assert on the exact bound values regardless of what the action does next.
-- **Diagnostic**: when the test fails, the message distinguishes *prefix mismatch* (DTO empty), *wrong source* (DTO empty), *culture* (string fields bound, numbers didn't), and *validation* (everything bound but failed a `[Required]`).
+The test renders the form, harvests every `name` attribute the renderer emitted, POSTs those exact names back, and asserts the action's parameter was populated. The diagnostic message distinguishes prefix mismatch, wrong source, culture parse, and validation failure.
 
 ```csharp
-// CapturedBindingFilter.cs — test-only, lives in the test project
 public class CapturedBindings {
     public ConcurrentDictionary<string, IDictionary<string, object?>> ByCorrelationId { get; } = new();
 }
 
-public class CapturedBindingFilter : IActionFilter {
+public class CapturedBindingFilter(CapturedBindings store) : IActionFilter {
     public const string HeaderName = "X-Test-CorrelationId";
-    private readonly CapturedBindings _store;
-    public CapturedBindingFilter(CapturedBindings store) => _store = store;
-
     public void OnActionExecuting(ActionExecutingContext context) {
-        if (!context.HttpContext.Request.Headers.TryGetValue(HeaderName, out var id) || string.IsNullOrEmpty(id)) {
-            return;
+        if (context.HttpContext.Request.Headers.TryGetValue(HeaderName, out var id) && !string.IsNullOrEmpty(id)) {
+            store.ByCorrelationId[id!] = new Dictionary<string, object?>(context.ActionArguments);
         }
-        _store.ByCorrelationId[id!] = new Dictionary<string, object?>(context.ActionArguments);
     }
-
     public void OnActionExecuted(ActionExecutedContext context) { }
 }
 ```
 
-Wire `CapturedBindings` + `CapturedBindingFilter` in your Razor-specific base class (alongside `ReplaceDatabaseWithSqlite` / `ReplaceRabbitMqWithMock`), and **pin the culture** to invariant:
+Wire `CapturedBindings` + `CapturedBindingFilter` in the fixture; pin the culture to invariant:
 
 ```csharp
-private static void ConfigureForRazorFormTests(IServiceCollection services, CapturedBindings store) {
-    // Model binding for decimals/dates uses thread CurrentCulture, not invariant.
-    // Pin it so tests behave the same on every dev machine and CI runner.
-    CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
-    CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
-
-    services.AddSingleton(store);
-    services.AddSingleton<CapturedBindingFilter>();
-    services.Configure<MvcOptions>(o => o.Filters.AddService<CapturedBindingFilter>());
-}
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+services.AddSingleton<CapturedBindings>();
+services.AddSingleton<CapturedBindingFilter>();
+services.Configure<MvcOptions>(o => o.Filters.AddService<CapturedBindingFilter>());
 ```
 
 The test:
 
 ```csharp
 [Fact]
-[Trait(Traits.Requirement, "SW-XXXX")]
 public async Task Create_FormRoundTrip_BindsAllRenderedInputsToController() {
     var correlationId = Guid.NewGuid().ToString();
-    var client = CreateClient(Role.InstitutionAdmin, institutionId: null);
-    // Important: do NOT auto-follow redirects — without this, the client follows the 302 and you see
-    // the redirected page's 200, masking the success signal.
-    client.DefaultRequestHeaders.Add("X-Test-CorrelationId", correlationId);
+    var client = Factory.CreateClient(new() { AllowAutoRedirect = false });
+    client.DefaultRequestHeaders.Add(CapturedBindingFilter.HeaderName, correlationId);
 
-    // 1. GET the rendered form
-    var getResp = await client.GetAsync("/Invoices/Create");
-    getResp.EnsureSuccessStatusCode();
+    var getResp = await client.GetAsync("/Invoices/Create", TestContext.Current.CancellationToken);
     var document = await BrowsingContext.New(Configuration.Default)
-        .OpenAsync(req => req.Content(await getResp.Content.ReadAsStringAsync()));
+        .OpenAsync(req => req.Content(await getResp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)));
     var form = (IHtmlFormElement)document.QuerySelector("form")!;
 
-    // 2. Harvest every name attribute the RENDERER produced — not what we expect.
     var sample = new Dictionary<string, string> { ["Number"] = "INV-001", ["Amount"] = "42.50" };
     var fields = new Dictionary<string, string>();
     foreach (var el in form.QuerySelectorAll("input[name], select[name], textarea[name]")) {
@@ -636,14 +506,9 @@ public async Task Create_FormRoundTrip_BindsAllRenderedInputsToController() {
         fields[name] = sample.TryGetValue(leaf, out var v) ? v : "x";
     }
 
-    // 3. POST back to the form's action URL with the harvested names
-    var action = form.GetAttribute("action");
-    if (string.IsNullOrEmpty(action)) action = getResp.RequestMessage!.RequestUri!.PathAndQuery;
-    var postResp = await client.PostAsync(action, new FormUrlEncodedContent(fields));
+    var postResp = await client.PostAsync(form.GetAttribute("action"),
+        new FormUrlEncodedContent(fields), TestContext.Current.CancellationToken);
 
-    // 4. Black-box: 302 = success, 200 = validation re-render = something didn't bind
-    // 5. White-box: address the bound DTO by *type*, not by parameter name. That makes the test
-    //    resilient to parameter renames while still failing if no field-name prefix matches.
     var captured = Captured.ByCorrelationId.GetValueOrDefault(correlationId);
     var bound = captured?.Values.OfType<InvoiceForm>().FirstOrDefault();
     var diagnostic = captured is null
@@ -652,141 +517,180 @@ public async Task Create_FormRoundTrip_BindsAllRenderedInputsToController() {
             ? $"action ran but no InvoiceForm in args. Args: [{string.Join(",", captured.Keys)}] — prefix mismatch?"
             : $"DTO bound: Number='{bound.Number}' Amount={bound.Amount} — validation failed or culture parse failed";
 
-    Assert.True(postResp.StatusCode == HttpStatusCode.Redirect, diagnostic);
-    Assert.NotNull(bound);
-    Assert.Equal("INV-001", bound!.Number);
-    Assert.Equal(42.50m, bound.Amount);
+    postResp.StatusCode.Should().Be(HttpStatusCode.Redirect, diagnostic);
+    bound!.Number.Should().Be("INV-001");
+    bound.Amount.Should().Be(42.50m);
 }
 ```
 
-Key design choices, validated end-to-end:
+Key design choices:
 
-- **Address the bound DTO by *type*, not by parameter name** (`args.Values.OfType<InvoiceForm>().FirstOrDefault()`) — resilient to parameter renames while still failing if no field-name prefix matches.
-- **`AllowAutoRedirect = false` is mandatory** on the `HttpClient` — without it, the client follows the 302 and the success signal is masked. Build the client via `factory.CreateClient(new() { AllowAutoRedirect = false })` for these tests (override the base helper or build inline).
-- **`CultureInfo.DefaultThreadCurrentCulture` in the host wiring is the only reliable culture pin.** `Accept-Language: en-US` from the client does nothing unless the app uses `UseRequestLocalization`, which the default template doesn't.
-- **Register the filter as a service** via `o.Filters.AddService<T>()` (not `o.Filters.Add<T>()`) — otherwise it gets a fresh instance per request and the singleton `CapturedBindings` store wouldn't be reachable.
+- **Address the bound DTO by *type*, not by parameter name** — resilient to action-parameter renames while still failing if no field-name prefix matches.
+- **`AllowAutoRedirect = false` is mandatory** — without it the client follows the 302 and the success signal is masked.
+- **`CultureInfo.DefaultThreadCurrentCulture` in `ConfigureWebHost` is the only reliable culture pin** — `Accept-Language` does nothing unless the app uses `UseRequestLocalization`.
+- **Register the filter as a service** via `o.Filters.AddService<T>()`, not `o.Filters.Add<T>()` — otherwise it's a fresh instance per request and the singleton store is unreachable.
 
-### Pattern — partial-graph seeding with `PRAGMA foreign_keys = OFF`
+### Integration tier — additional rules
 
-When a handler reads only a few entities but the entity graph has dozens of foreign-key parents you don't care about, disable FK enforcement on the SQLite connection so the seed call can skip the irrelevant parents:
-
-```csharp
-services.AddSingleton<DbConnection>(_ => {
-    var connection = new SqliteConnection("DataSource=:memory:");
-    connection.Open();
-    using var cmd = connection.CreateCommand();
-    cmd.CommandText = "PRAGMA foreign_keys = OFF;";
-    cmd.ExecuteNonQuery();
-    return connection;
-});
-
-// After Migrate(), re-apply (Migrate re-enables foreign_keys by default):
-db.Database.Migrate();
-db.Database.ExecuteSqlRaw("PRAGMA foreign_keys = OFF;");
-```
-
-This **only** belongs in tests that seed a minimal slice. If you find yourself toggling FK enforcement to make a test pass against a real FK violation, the test is hiding a real bug — fix the seed, not the constraint.
-
-### Pattern — route-sanity probe (catches dead routes statically)
-
-A single test that walks every action descriptor and asks `LinkGenerator` to resolve a URL. Cheap, no HTTP. Catches `[Route]` attributes that drift from MediatR command paths during refactors (in APIs) and dead controller/action pairs referenced by tag helpers (in Razor / MVC projects, complementing the view-rendering test above).
-
-```csharp
-public class RouteSanityTests : BaseIntegrationTest {
-    public RouteSanityTests(WebApplicationFactory<Program> factory) : base(factory) { }
-
-    [Fact]
-    [Trait(Traits.Requirement, "SW-INFRA")]
-    public void AllActionDescriptors_ResolveToAUrl() {
-        // Force the factory to materialise without auth/db wiring concerns.
-        var (_, factory) = CreateAuthenticatedClient(Role.InstitutionAdmin, institutionId: null);
-
-        using var scope = factory.Services.CreateScope();
-        var provider = scope.ServiceProvider.GetRequiredService<IActionDescriptorCollectionProvider>();
-        var links = scope.ServiceProvider.GetRequiredService<LinkGenerator>();
-
-        foreach (var d in provider.ActionDescriptors.Items.OfType<ControllerActionDescriptor>()) {
-            var url = links.GetPathByAction(action: d.ActionName, controller: d.ControllerName);
-            Assert.False(string.IsNullOrEmpty(url),
-                $"{d.ControllerName}.{d.ActionName} has no resolvable route");
-        }
-    }
-}
-```
-
-### Pattern — log-assertion teardown (no silent server errors)
-
-Add a `Warning+`-log assertion to the base class. If the integration test passes but the request logged a `Warning` or worse, fail the test in `Dispose`. Lifted from OrchardCore.
-
-```csharp
-public abstract class IntegrationTestBase : BaseIntegrationTest, IDisposable {
-    private readonly FakeLogCollector _logs;
-
-    protected IntegrationTestBase(WebApplicationFactory<Program> factory) : base(factory) {
-        _logs = Factory.Services.GetRequiredService<FakeLogCollector>();
-        _logs.Clear();
-    }
-
-    public void Dispose() {
-        var bad = _logs.GetSnapshot().Where(r => r.Level >= LogLevel.Warning).ToList();
-        Assert.True(bad.Count == 0, $"Request logged {bad.Count} warning(s)/error(s)");
-    }
-}
-```
-
-Register `services.AddLogging(b => b.AddFakeLogging())` inside `ReplaceDatabaseWithSqlite`-style helpers when adopting this.
-
-### Rules
-
-- **Use `IClassFixture<WebApplicationFactory<Program>>` once, in the base class.** Do not new a factory per test — it re-builds the host every time and is expensive.
-- **One DB per fixture call (SQLite-in-memory) or one container per fixture (Testcontainers).** Do not share containers across test classes that run in parallel — Testcontainers + xUnit collection parallelism causes port collisions and FK race conditions.
-- **JSON serialiser default: PascalCase in C#, camelCase on the wire.** Same rule as production code. Assert against camelCase JSON paths when poking into `JsonNode`/`JsonDocument`.
-- **Test code may use `string?` and friends** where AngleSharp / framework APIs return nullable. This is the only exception to the project-wide "annotate everything explicitly" rule.
-- **Never bypass auth with a global flag.** Always go through `TestAuthHandler` — that's how you exercise the real authorization pipeline.
-- **URL assertions are the one place** the "no hardcoded URLs" rule from `dotnet-conventions` is relaxed — you're asserting against the rendered URL, not constructing one.
+- **Use `IClassFixture<WebFactoryFixture>`** so the host is built once per class, not per test.
+- **Never share Testcontainers instances across parallel xUnit collections** — give each collection its own fixture or you get port collisions.
+- **Anonymous DTOs in `Json()` responses use PascalCase in C#** — ASP.NET converts to camelCase on the wire. Assert against the camelCase JSON.
+- **URL assertions are the one place** the "no hardcoded URLs" rule from `dotnet-conventions` is relaxed — you're asserting on the rendered URL, not constructing one.
 
 ---
 
-## Tier 3 — Functional / End-to-End
+## Tier 3 — Functional / End-to-End (Playwright)
 
-C-Mo's e2e tests today live **outside** the .NET test runner — `make deploy-e2e` boots the full stack via `docker-compose.e2e.yml` (Authenticator, Management, Medical, Annotations, BackgroundServices, MinIO, mailpit, RabbitMQ, Postgres) and a separate harness exercises real flows.
+**Only for projects that serve a web UI** — Razor / Blazor / MVC views / SPA backends. Web API projects have no functional tier; their end-to-end is exhausted by the integration tier.
 
-There is currently **no in-repo Playwright project** for browser-driven e2e. If/when one is added:
+Use sparingly: these tests are the slowest tier and the most brittle. One smoke test of every critical user journey, not full coverage.
 
-- New csproj `*.FunctionalTests` separate from `*.Tests` — different runtime cost, different CI cadence.
-- **`Microsoft.Playwright`** .NET binding + xUnit v3.
-- **Real Kestrel host on a random port** — *not* `WebApplicationFactory<Program>` (TestServer is in-memory; Playwright needs a real listener).
-- Browser install via `pwsh playwright.ps1 install chromium` or `Microsoft.Playwright.Program.Main(["install", "chromium"])` from the fixture (idempotent). `dotnet exec ... Microsoft.Playwright.dll install` does **not** work — no `runtimeconfig.json` on the DLL.
-- Selectors: `[data-testid="..."]` only. Never CSS classes that exist for styling.
-- Enable Playwright tracing via env var `PLAYWRIGHT_TRACING=1`; upload traces as CI artifacts on failure.
+### Stack
 
-Until the in-repo Playwright tier exists, treat the docker-compose flow as the functional tier and don't try to fold it into the unit/integration projects.
+- **Microsoft.Playwright** (.NET binding) + **xUnit v3**.
+- **A real Kestrel host on a random port** — *not* `WebApplicationFactory<TEntryPoint>`. `WebApplicationFactory` uses `TestServer`, which is an in-memory request handler with no HTTP listener; Playwright drives a real browser to a real URL.
+
+### Csproj fragment
+
+```xml
+<ItemGroup>
+  <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  <PackageReference Include="xunit.v3" />
+  <PackageReference Include="xunit.analyzers" />
+  <PackageReference Include="AwesomeAssertions" />
+  <PackageReference Include="Microsoft.Playwright" />
+</ItemGroup>
+```
+
+After `dotnet build`, install the browsers. Preferred:
+
+```bash
+pwsh tests/MyApp.FunctionalTests/bin/Debug/net10.0/playwright.ps1 install chromium
+```
+
+If `pwsh` isn't available (common on macOS dev machines), call `Microsoft.Playwright.Program.Main(["install", "chromium"])` from the fixture's `InitializeAsync` (idempotent). Do **not** use `dotnet exec ... Microsoft.Playwright.dll install` — the DLL has no `runtimeconfig.json` and that invocation fails with a self-contained-app error.
+
+In CI, pre-install browsers in a workflow step so the install cost isn't counted against test wall-clock.
+
+### Pattern — Kestrel-hosted fixture
+
+```csharp
+public class KestrelHostFixture : IAsyncLifetime {
+    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().WithImage("postgres:16-alpine").Build();
+    private WebApplication? _app;
+
+    public string BaseUrl { get; private set; } = default!;
+
+    public async ValueTask InitializeAsync() {
+        await _db.StartAsync();
+        // ApplicationName + ContentRootPath must point at the web project's bin output, otherwise
+        // MapStaticAssets() can't find <ApplicationName>.staticwebassets.endpoints.json on .NET 10.
+        var webBin = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+            "src", "MyApp.Web", "bin", "Debug", "net10.0"));
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions {
+            ContentRootPath = webBin,
+            ApplicationName = "MyApp.Web",
+        });
+        builder.Configuration["ConnectionStrings:Default"] = _db.GetConnectionString();
+        MyApp.Web.Program.ConfigureServices(builder);
+
+        _app = builder.Build();
+        MyApp.Web.Program.ConfigurePipeline(_app);
+        _app.Urls.Add("http://127.0.0.1:0");
+        await _app.StartAsync();
+        BaseUrl = _app.Urls.First();
+    }
+
+    public async ValueTask DisposeAsync() {
+        if (_app is not null) { await _app.StopAsync(); await _app.DisposeAsync(); }
+        await _db.DisposeAsync();
+    }
+}
+```
+
+This pattern requires the production `Program.cs` to expose `ConfigureServices(builder)` and `ConfigurePipeline(app)` helpers so the fixture can build the same host without duplicating setup.
+
+### Pattern — Playwright test
+
+```csharp
+[Fact]
+public async Task Login_WithValidCredentials_RedirectsToDashboard() {
+    using var pw = await Playwright.CreateAsync();
+    await using var browser = await pw.Chromium.LaunchAsync(new() { Headless = true });
+    var context = await browser.NewContextAsync(new() { BaseURL = Host.BaseUrl });
+    var page = await context.NewPageAsync();
+
+    await page.GotoAsync("/Account/Login");
+    await page.FillAsync("[data-testid='email']", "admin@example.com");
+    await page.FillAsync("[data-testid='password']", "Password1!");
+    await page.ClickAsync("[data-testid='submit']");
+
+    await page.WaitForURLAsync("**/Dashboard");
+    await Assertions.Expect(page.Locator("[data-testid='dashboard-title']")).ToHaveTextAsync("Dashboard");
+}
+```
+
+### Functional tier — rules
+
+- **Selectors: `[data-testid="..."]`** (or `[data-cy="..."]`). Never assert on CSS classes used for styling.
+- **Enable Playwright tracing on failure only** via env var `PLAYWRIGHT_TRACING=1`; upload traces as CI artifacts. Tracing is too expensive to leave on by default.
+- **Don't reuse login state across unrelated test classes.** Each fixture either logs in fresh or uses `storageState` from a one-time setup.
+- **One critical journey per test**, not full coverage. Detailed coverage belongs in the integration tier.
 
 ---
 
 ## Tier 4 — Performance / Benchmarks
 
-Add only when a hot path is identified — never as table-stakes for a new project.
+`BenchmarkDotNet` console project. Used for measuring hot paths and detecting regressions — add only when a hot path is identified.
 
-- New csproj `*.Benchmarks`, `<OutputType>Exe</OutputType>`, `<IsTestProject>false</IsTestProject>`, `<ServerGarbageCollection>true</ServerGarbageCollection>`.
-- **`BenchmarkDotNet`**; `BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);` as `Main`.
-- Always include `[MemoryDiagnoser]`. Allocation regressions matter as much as time regressions.
-- For before/after of a refactor: keep both implementations, mark the old `[Benchmark(Baseline = true)]` and the new `[Benchmark]` — BenchmarkDotNet prints the ratio.
-- **Never run benchmarks in Docker or on shared CI runners.** You need a stable CPU and scheduler. Dedicated machine, nightly cadence, results posted to a tracking issue.
-- If the benchmark project defines its own `static class Program`, switch the integration tests to fully-qualified `WebApplicationFactory<CmoCloudBackend.AnnotationsAPI.Program>` to disambiguate.
+```xml
+<PropertyGroup>
+  <OutputType>Exe</OutputType>
+  <IsPackable>false</IsPackable>
+  <IsTestProject>false</IsTestProject>
+  <ServerGarbageCollection>true</ServerGarbageCollection>
+</PropertyGroup>
+<ItemGroup>
+  <PackageReference Include="BenchmarkDotNet" />
+</ItemGroup>
+```
+
+```csharp
+public static class Program {
+    public static void Main(string[] args) =>
+        BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+}
+
+[MemoryDiagnoser]
+public class InvoiceRenderingBenchmark {
+    [Benchmark(Baseline = true)]
+    public string OldImplementation() { /* … */ }
+
+    [Benchmark]
+    public string NewImplementation() { /* … */ }
+}
+```
+
+### Rules
+
+- **Never run benchmarks inside Docker, inside a shared CI runner, or alongside other workloads.** You need a stable CPU and scheduler. Dedicated machine, scheduled cadence (nightly / on-demand), results posted to a tracking issue.
+- **Always include `[MemoryDiagnoser]`** — allocation regressions matter as much as time regressions.
+- **`[GlobalSetup]` for once-per-method setup; `[IterationSetup]` for per-iteration.** Never put expensive setup inside the `[Benchmark]` method.
+- **Within ~3% of an alternative is noise** — don't optimise based on that delta.
 
 ---
 
 ## Docker / Testcontainers policy
 
-Docker hosts **the dependencies the tests need**, not the test runner.
+Use Docker to host **the dependencies the tests need**, not the test runner itself.
 
-- **Unit** — no Docker. No I/O.
-- **Integration** — `Testcontainers.PostgreSql` (target) per fixture, started in `IAsyncLifetime`. `Testcontainers.RabbitMq` / `Testcontainers.Minio` when the test exercises real broker / object-store flows; mock the connection factory otherwise.
-- **Functional / e2e** — full stack via `docker-compose.e2e.yml` for now.
+- **Unit tests** — no Docker.
+- **Integration tests** — Testcontainers per fixture (`PostgreSql`, `MsSql`, `MySql`, `Redis`, `RabbitMq`, LocalStack for S3, …). Match production providers exactly.
+- **Functional tests** — in-process Kestrel + Playwright-managed browsers. Container only if you need to pin the browser OS (`mcr.microsoft.com/playwright/dotnet`).
 - **Benchmarks** — never in Docker.
 
-Avoid `docker-compose up` for integration tests — it introduces shared state across runs and breaks Testcontainers' per-fixture isolation.
+Avoid `docker-compose up` for tests — shared state across runs defeats the per-fixture isolation Testcontainers gives you.
 
 ---
 
@@ -796,39 +700,22 @@ Run each tier on its own cadence:
 
 | Workflow | Tier | When |
 |---|---|---|
-| `tests.yml` | Unit + Integration | Every push (PR + main) |
-| `e2e.yml` | Functional | Every PR (after build), main, scheduled nightly |
-| `benchmarks.yml` | Benchmarks | Nightly on a dedicated runner |
+| `unit.yml` | Unit | Every push (PR + main) |
+| `integration.yml` | Integration | Every PR (matrix by DB provider if multiple) |
+| `functional.yml` | Functional | Every PR (Chromium only); main + nightly (all browsers) |
+| `benchmarks.yml` | Benchmarks | Nightly on a dedicated runner; results posted to a tracking issue |
 
-Filter tests via `dotnet test --filter` on traits, project, or class — never by test name patterns.
-
-```bash
-# Unit-only (run handler/service tests, skip integration)
-dotnet test --filter "Category=Unit"
-
-# All tests for a single requirement
-dotnet test --filter "requirement=SW-4821"
-
-# Specific class
-dotnet test --filter "FullyQualifiedName~CreateAnnotationProjectIntegrationTest"
-
-# Full solution
-dotnet test --configuration Release
-```
-
-When migrating to xUnit v3 / MTP, switch positional paths to `--project`:
+Filter via `dotnet test --filter` on traits, project, or class — never by test name patterns.
 
 ```bash
-# v3 / MTP
-dotnet test --project tests/CmoCloudBackend.AnnotationsAPI.Tests/CmoCloudBackend.AnnotationsAPI.Tests.csproj
+# MTP: --project, not positional
+dotnet test --project tests/MyApp.UnitTests/MyApp.UnitTests.csproj
+dotnet test --project tests/MyApp.IntegrationTests/MyApp.IntegrationTests.csproj
+dotnet test --project tests/MyApp.FunctionalTests/MyApp.FunctionalTests.csproj
+dotnet test --filter "requirement=SW-1234"
+PLAYWRIGHT_TRACING=1 dotnet test --project tests/MyApp.FunctionalTests/MyApp.FunctionalTests.csproj
+dotnet run --project tests/MyApp.Benchmarks --configuration Release -- --filter "*"
 ```
-
----
-
-## Formatting
-
-- Run `dotnet format --severity error` on every new or modified test file before staging (same gate as production code in `cloud-backend-subsystems`).
-- A local pre-commit hook that runs on staged files only is not authoritative — `dotnet format --verify-no-changes --severity error` runs against the whole tree in CI and may flag different formatting in tree-context. Run the formatter yourself.
 
 ---
 
@@ -836,36 +723,35 @@ dotnet test --project tests/CmoCloudBackend.AnnotationsAPI.Tests/CmoCloudBackend
 
 | Aspect | Rule |
 |---|---|
-| Test runner (target) | xUnit v3 on Microsoft Testing Platform |
-| Test runner (current) | xUnit v2 + `xunit.runner.visualstudio` + `XunitXml.TestLogger` (no migration until non-trivial test-infra change) |
-| MTP opt-in | `global.json` at repo root with `"test": { "runner": "Microsoft.Testing.Platform" }` (required on .NET 10+) |
-| Test csproj must-haves | `<ImplicitUsings>enable</ImplicitUsings>` + `<Nullable>enable</Nullable>` + `<PreserveCompilationContext>true</PreserveCompilationContext>` |
-| Assertions | xUnit `Assert.X` (current) or AwesomeAssertions (target). Never FluentAssertions v8+ (commercial). |
-| Mocking | Moq + MockQueryable.Moq (current) or NSubstitute (target, new projects) |
-| Traceability | **Regulated projects only** (medical-device software, customer-facing backends): every test method has `[Trait(Traits.Requirement, "SW-XXXX")]` linking to a **software requirement** (not a Jira task). Infra/probe tests use `SW-INFRA` or another agreed sentinel. **Internal-only projects**: skip the trait — don't fake IDs to look compliant. |
-| Per-project files | `Usings.cs` at the test project root (every project); `Traits.cs` only when the project uses traits (traceability or filtering) |
-| `Program.cs` discoverability | Append `namespace X { public partial class Program { } }` (braced) — file-scoped doesn't work after top-level statements |
-| `WebApplicationFactory<T>` | Short `WebApplicationFactory<Program>` is fine until a benchmark sibling adds its own `Program`; then fully-qualify |
-| Test class naming | `{Subject}Test` (singular, matches the repo) |
+| Test runner | xUnit v3 on Microsoft Testing Platform — every tier |
+| MTP opt-in | `global.json` with `"test": { "runner": "Microsoft.Testing.Platform" }` (required on .NET 10+) |
+| xUnit v3 packages | `xunit.v3` + `xunit.analyzers` only — `xunit.v3.analyzers` does not exist; `xunit.v3.mtp-v2` conflicts with what `xunit.v3` already pulls in |
+| Test csproj must-haves | `<ImplicitUsings>enable</ImplicitUsings>` + `<Nullable>enable</Nullable>` + `<OutputType>Exe</OutputType>` |
+| Assertions | AwesomeAssertions. Never FluentAssertions v8+ (commercial license). |
+| Mocking | NSubstitute |
+| HTML parsing | AngleSharp (Razor / Blazor only) |
+| `Program.cs` discoverability | Append `namespace MyApp.Web { public partial class Program { } }` (braced) |
+| `WebApplicationFactory<T>` | Fully qualified — `WebApplicationFactory<MyApp.Web.Program>` |
+| Project per tier | `*.UnitTests`, `*.IntegrationTests`, `*.FunctionalTests`, `*.Benchmarks` — never mixed |
+| Test independence | Tests must run in parallel safely — no shared state, no order dependencies, each test owns its data |
+| Test class naming | `{Subject}Tests` |
 | Test method naming | `Method_Condition_Result` |
-| Folder mirroring | tests/...path mirrors src/...path exactly |
-| Async cancellation | Pass `TestContext.Current.CancellationToken` (xUnit v3) / `CancellationToken.None` (xUnit v2) to async APIs |
+| Async cancellation | Pass `TestContext.Current.CancellationToken` to every async API that accepts one |
 | Unit DB | `Microsoft.EntityFrameworkCore.InMemory` only for trivial handler tests; never for FK / unique / SQL-translation logic |
-| Integration DB (current) | `Microsoft.Data.Sqlite` `DataSource=:memory:` + `UseSqlite(...).UseSnakeCaseNamingConvention()` |
-| Integration DB (target) | `Testcontainers.PostgreSql` per fixture |
-| `WebApplicationFactory` fixture | Consolidated `BaseIntegrationTest` per project — do **not** duplicate `WithWebHostBuilder` blocks across test files |
-| Test auth | `TestAuthHandler` + claims smuggled through `AuthenticationSchemeOptions.Events` |
-| RabbitMQ in tests | Mock `IConnectionFactory` in the integration base class; real broker only in e2e |
-| Partial-graph seeding | `PRAGMA foreign_keys = OFF` on the SQLite connection (after `Migrate`) — only for tests that intentionally skip parents |
+| Integration DB | **Testcontainers** with the production provider — never SQLite-in-memory as a stand-in |
+| Endpoint coverage | Every API endpoint exercised at the integration tier with all scenarios — happy path, all auth-failure roles, validation, not-found, conflict, unauthenticated |
+| `dotnet test` invocation | `--project <path>` — positional path is rejected by MTP |
+| Functional tier | **Playwright** browser-based e2e, only for projects that serve a web UI; smoke per critical journey, not full coverage |
+| Functional tier host | Kestrel on a random port; `WebApplicationFactory` does not work here |
+| Selectors (Playwright) | `[data-testid]` only, never styling classes |
+| Auth in integration tests | `TestAuthHandler` with role smuggled via test header — never a global bypass flag |
+| DB cleanup between integration tests | Respawn (truncate user tables); never DROP/CREATE |
 | Silent server errors | `FakeLoggerProvider` + teardown asserting no `Warning+` logs |
-| Route drift | `LinkGenerator` route-sanity probe over `ActionDescriptors` (APIs + Razor) |
-| Razor — broken `asp-action` / `asp-controller` | View-rendering test + AngleSharp assertion on resolved `href` |
-| Razor — broken `asp-for` | Probe verifying every form input has a non-empty `name` attribute (paired with strongly-typed `@model` compile-time checks) |
-| Razor — form binding (prefix mismatch / wrong `[FromX]` / culture parse) | Form round-trip test: render → harvest emitted `name` attrs → POST back → assert 302 + captured DTO via test-only `IActionFilter` |
-| Razor — culture pin | `CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture` in the host wiring — ASP.NET model binding uses thread culture, not invariant |
-| Razor — `HttpClient` | `AllowAutoRedirect = false` for form round-trip tests; without it the 302 is followed and the success signal is masked |
-| Functional / e2e | `make deploy-e2e` for now; future Playwright project on real Kestrel |
-| Benchmarks | BenchmarkDotNet, `[MemoryDiagnoser]`, dedicated runner, nightly |
-| Docker for tests | Hosts dependencies, never hosts the test runner; never benchmarks |
-| Selectors (future Playwright) | `[data-testid]`, never styling classes |
-| Formatting | `dotnet format --severity error` before staging; CI gates on `--verify-no-changes` |
+| Razor — broken `asp-action` / `asp-controller` | View-rendering test with AngleSharp `href` assertion |
+| Razor — form binding bugs | Form round-trip test: render → harvest emitted `name` attrs → POST back → assert 302 + captured DTO; pin culture to invariant; `AllowAutoRedirect = false` |
+| Benchmarks | BenchmarkDotNet, `[MemoryDiagnoser]`, dedicated runner, scheduled cadence |
+| Docker for tests | Hosts dependencies, never the test runner; never benchmarks |
+| Traceability | **Regulated projects only**: `[Trait(Traits.Requirement, "SW-XXXX")]` linking to a software requirement; infra/probe tests use `SW-INFRA`. **Internal-only projects**: skip the trait. |
+| Per-project files | `Usings.cs` (every project); `Traits.cs` only when the project uses trait keys |
+| Test data | Builder helper or `Bogus` — never scattered hand-rolled literals |
+| Formatting | `dotnet format --severity error` before staging |
