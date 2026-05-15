@@ -9,7 +9,7 @@ Claude Code plugin marketplace for C-Mo Solutions. Bundles a language-agnostic c
 | [`cmo-core`](./cmo-core/README.md) | Filled | Language-agnostic: code review, project analysis, git/PR, Jira task creation, coding/security/git skills, skill-reminder hook |
 | `cmo-python` | Scaffold | Python-specific agents, commands, and skills |
 | `cmo-frontend` | Scaffold | Vue/frontend-specific agents, commands, and skills |
-| `cmo-dotnet` | Scaffold | .NET-specific agents, commands, and skills |
+| `cmo-dotnet` | Skill only | `dotnet-conventions` (language, EF Core, ASP.NET Core) and `dotnet-testing` (xUnit + `WebApplicationFactory<Program>` + CQRS handler patterns + Razor view/form probes, with optional requirements-traceability traits for regulated projects) skills filled. `dotnet-reviewer` agent and `/dn-new-controller` command are TODO scaffolds. |
 | `cmo-firmware` | Scaffold | Firmware-specific agents, commands, and skills |
 
 `cmo-core` is the only plugin with fully written content today. The stack-specific plugins are placeholders (TODO bodies) that Miguel fills in as conventions stabilise per stack.
@@ -64,7 +64,7 @@ cmo-claude-plugins/
 │   └── hooks/               # skill-reminder
 ├── cmo-python/              # scaffold — placeholder agents/commands/skills
 ├── cmo-frontend/            # scaffold
-├── cmo-dotnet/              # scaffold
+├── cmo-dotnet/              # skills filled (dotnet-conventions, dotnet-testing); agent + command TODO
 └── cmo-firmware/            # scaffold
 ```
 
