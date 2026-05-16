@@ -8,7 +8,7 @@
     {
       "name": "cmo-core",
       "source": "./cmo-core",
-      "description": "TODO",
+      "description": "General code architecture, code review, and git operations — universal coding-standards, testing-standards (tier model + two-level Jira traceability + parallelism), security review, code-review and project-analysis agents.",
       "version": "0.1.0"
     },
     {

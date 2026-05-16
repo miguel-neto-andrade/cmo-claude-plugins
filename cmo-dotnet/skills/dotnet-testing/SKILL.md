@@ -1,39 +1,40 @@
 ---
 name: dotnet-testing
-description: Testing standards for any C# / .NET project — Web API, Razor / MVC, Blazor, worker services, libraries. Covers unit, integration, functional/e2e (Playwright), and performance (BenchmarkDotNet) tiers; xUnit + `WebApplicationFactory<Program>`; Testcontainers for DB / broker / object-store fidelity; CQRS handler patterns; Razor view-rendering and form round-trip probes; test independence and parallelism. Use when writing, reviewing, or scaffolding tests; when wiring fixtures and mocks; when designing test CI. Pairs with `dotnet-conventions`.
+description: .NET-specific testing patterns for any C# project — Web API, Razor / MVC, Blazor, worker services, libraries. xUnit v3 on MTP, `WebApplicationFactory<Program>`, Testcontainers wiring, CQRS handler patterns, Razor view-rendering and form round-trip probes, BenchmarkDotNet. Use when writing, reviewing, or scaffolding .NET tests; when wiring fixtures and mocks; when designing test CI. The universal rules (tier structure, two-level Jira traceability, independence and parallelism, naming, scenario coverage) live in `cmo-core/testing-standards` — load both. Also pairs with `dotnet-conventions`.
 ---
 
 # .NET Testing Standards
 
-Tiered testing for any .NET project. Each tier has a dedicated test project, a single runner (xUnit v3), and a clear scope.
+Stack-specific testing patterns for C# / .NET projects. Read `testing-standards` (in `cmo-core`) first — it owns the universal rules (tier structure, independence and parallelism, two-level Jira traceability, naming, scenario coverage). This skill covers the .NET-specific *how*: xUnit v3 on MTP, `WebApplicationFactory<Program>`, Testcontainers wiring, Razor view-rendering and form round-trip probes, BenchmarkDotNet.
 
-| Tier | Project suffix | Scope | Stack |
-|---|---|---|---|
-| Unit | `*.UnitTests` | Pure logic — handlers, validators, services, value objects, helpers. No host, no I/O. | xUnit v3 + AwesomeAssertions + NSubstitute |
-| Integration | `*.IntegrationTests` | Real ASP.NET Core pipeline in-process via `WebApplicationFactory<Program>`. Real DB / broker / object store via **Testcontainers**. Covers policy/auth, validators, model binding, MediatR pipeline, EF migrations. **Every API endpoint must be exercised here with all its scenarios.** | xUnit v3 + `Microsoft.AspNetCore.Mvc.Testing` + Testcontainers |
-| Functional / e2e | `*.FunctionalTests` | **Browser-based end-to-end tests via Playwright** — only for projects that serve a web UI (Razor / Blazor / MVC views / SPA backends). Login flows, JS interactions, redirects. Web API projects do not have a functional tier. | xUnit v3 + Microsoft.Playwright |
-| Performance | `*.Benchmarks` | Micro-benchmarks of hot paths (view rendering, hot service methods, allocation hotspots). | BenchmarkDotNet console app |
+## Tier mapping for .NET projects
 
-Split into separate projects from day one. Mixing tiers in a single `*.Tests` project costs you CI flexibility, runtime, and the ability to gate slow tests behind a different cadence.
+The universal four-tier model from `testing-standards`, expressed in .NET project conventions:
+
+| Tier | Project suffix | .NET stack |
+|---|---|---|
+| Unit | `*.UnitTests` | xUnit v3 + AwesomeAssertions + NSubstitute |
+| Integration | `*.IntegrationTests` | xUnit v3 + `Microsoft.AspNetCore.Mvc.Testing` + Testcontainers |
+| Functional / e2e | `*.FunctionalTests` | xUnit v3 + Microsoft.Playwright (only for projects that serve a web UI) |
+| Performance | `*.Benchmarks` | BenchmarkDotNet console app |
+
+Split into separate projects from day one — one csproj per tier. Mixing tiers in a single `*.Tests` project costs CI flexibility and the ability to gate slow tests behind a different cadence.
 
 ---
 
-## Hard rules (apply to every test, every project)
+## .NET-specific hard rules
 
-- **Tests are independent and run in parallel.** No test depends on another test's state, ordering, or side effects. Each test owns its data — seed what it needs, clean up nothing (the fixture or per-test DB does that). xUnit runs collections in parallel by default; do **not** disable parallelism with `[CollectionDefinition(DisableParallelization = true)]` unless you have a concrete reason and a comment explaining it. If two tests interact, one of them is buggy.
-- **Test class naming `{Subject}Tests`**, test method `Method_Condition_Result` (e.g. `Approve_PendingInvoice_SetsStatusApproved`). Test files mirror the source folder structure.
-- **Nullable reference types enabled** (`<Nullable>enable</Nullable>`). Test code may use `string?` and friends where framework / library APIs return nullable; that's the only exception to the "annotate everything explicitly" rule from `dotnet-conventions`.
+The universal rules (parallelism, independence, naming-by-action+condition+outcome, anti-flake, scenario coverage, Jira traceability split) live in `cmo-core/testing-standards`. The rules below add .NET specifics on top.
+
+- **Test class naming `{Subject}Tests`**; test method `Method_Condition_Result` (e.g. `Approve_PendingInvoice_SetsStatusApproved`). Test files mirror the source folder structure. (Concrete .NET form of the universal naming rule.)
+- **Nullable reference types enabled** (`<Nullable>enable</Nullable>`). Test code may use `string?` where framework / library APIs return nullable — the only exception to the "annotate everything explicitly" rule from `dotnet-conventions`.
 - **`async`/`await` all the way down.** Pass `TestContext.Current.CancellationToken` (xUnit v3) to every async API that accepts one — the `xUnit1051` analyzer warns when you don't.
-- **No `Thread.Sleep`, no arbitrary delays.** If a test is flaky on timing, the production code has a race. Fix the race, not the test.
-- **One assertion concept per test.** Multiple `.Should()` calls are fine if they verify the same logical outcome.
-- **Traceability — two levels, tier-dependent.** Required for regulated projects, optional for internal-only projects.
-  - **Required** (medical-device software, customer-facing backends, anything under an IEC 62304 / regulatory audit trail): every test method carries a trait linking it to a Jira issue. The trait key depends on the tier:
-    - **Unit + Integration tests** → `[Trait(Traits.Task, "SW-XXXX")]` — links to a Jira issue of type **Task** (the work item that introduced the behaviour).
-    - **Functional / e2e tests** → `[Trait(Traits.Requirement, "SW-XXXX")]` — links to a Jira issue of type **Requirement** (the user-facing capability the journey verifies).
-    - Both keys point at the same Jira project; the issue *type* (Task vs Requirement) tells the audit trail what level of contract the test is verifying.
-    - Tests that don't map to a single Jira issue (route-sanity probes, log-assertion teardowns) use `[Trait(Traits.Task, "SW-INFRA")]` or another agreed sentinel — never omit the trait at the required tier.
-  - **Optional** (internal tools, dev tooling, throwaway experiments): skip both traits entirely — don't fake IDs to "look compliant".
-  - If the project's README / `CLAUDE.md` is silent and the project ships software to a regulated context, **assume traceability is required**.
+- **xUnit collection parallelism stays on.** Do not add `[CollectionDefinition(DisableParallelization = true)]` (or `[assembly: CollectionBehavior(DisableTestParallelization = true)]`) without a comment justifying it. The universal independence rule is enforced through real parallel execution.
+- **Traceability traits (regulated projects only)** — concrete .NET syntax for the universal two-level rule:
+  - Unit + Integration: `[Trait(Traits.Task, "SW-XXXX")]`
+  - Functional / e2e: `[Trait(Traits.Requirement, "SW-XXXX")]`
+  - Infra/probe tests: `[Trait(Traits.Task, "SW-INFRA")]`
+  - CI filter: `dotnet test --filter "task=SW-1234"` or `"requirement=SW-5678"`
 
 ---
 
@@ -732,7 +733,9 @@ dotnet run --project tests/MyApp.Benchmarks --configuration Release -- --filter 
 
 ---
 
-## Quick reference
+## Quick reference (.NET-specific)
+
+The universal rules (tiers, parallelism, independence, naming-by-action+condition+outcome, scenario coverage, anti-flake, traceability split) are in `cmo-core/testing-standards`. The table below covers only the .NET-specific *how*.
 
 | Aspect | Rule |
 |---|---|
@@ -746,15 +749,13 @@ dotnet run --project tests/MyApp.Benchmarks --configuration Release -- --filter 
 | `Program.cs` discoverability | Append `namespace MyApp.Web { public partial class Program { } }` (braced) |
 | `WebApplicationFactory<T>` | Fully qualified — `WebApplicationFactory<MyApp.Web.Program>` |
 | Project per tier | `*.UnitTests`, `*.IntegrationTests`, `*.FunctionalTests`, `*.Benchmarks` — never mixed |
-| Test independence | Tests must run in parallel safely — no shared state, no order dependencies, each test owns its data |
 | Test class naming | `{Subject}Tests` |
 | Test method naming | `Method_Condition_Result` |
 | Async cancellation | Pass `TestContext.Current.CancellationToken` to every async API that accepts one |
+| Disabling parallelism | Never `[CollectionDefinition(DisableParallelization = true)]` without a justifying comment |
 | Unit DB | `Microsoft.EntityFrameworkCore.InMemory` only for trivial handler tests; never for FK / unique / SQL-translation logic |
 | Integration DB | **Testcontainers** with the production provider — never SQLite-in-memory as a stand-in |
-| Endpoint coverage | Every API endpoint exercised at the integration tier with all scenarios — happy path, all auth-failure roles, validation, not-found, conflict, unauthenticated |
 | `dotnet test` invocation | `--project <path>` — positional path is rejected by MTP |
-| Functional tier | **Playwright** browser-based e2e, only for projects that serve a web UI; smoke per critical journey, not full coverage |
 | Functional tier host | Kestrel on a random port; `WebApplicationFactory` does not work here |
 | Selectors (Playwright) | `[data-testid]` only, never styling classes |
 | Auth in integration tests | `TestAuthHandler` with role smuggled via test header — never a global bypass flag |
@@ -764,7 +765,7 @@ dotnet run --project tests/MyApp.Benchmarks --configuration Release -- --filter 
 | Razor — form binding bugs | Form round-trip test: render → harvest emitted `name` attrs → POST back → assert 302 + captured DTO; pin culture to invariant; `AllowAutoRedirect = false` |
 | Benchmarks | BenchmarkDotNet, `[MemoryDiagnoser]`, dedicated runner, scheduled cadence |
 | Docker for tests | Hosts dependencies, never the test runner; never benchmarks |
-| Traceability | **Regulated projects only**, two levels: unit + integration tests use `[Trait(Traits.Task, "SW-XXXX")]` (Jira Task that introduced the behaviour); functional / e2e tests use `[Trait(Traits.Requirement, "SW-XXXX")]` (Jira Requirement the user-facing journey verifies). Infra/probe tests use `SW-INFRA` under `Traits.Task`. **Internal-only projects**: skip both traits. |
+| Traceability (.NET syntax) | Unit + integration: `[Trait(Traits.Task, "SW-XXXX")]`. Functional / e2e: `[Trait(Traits.Requirement, "SW-XXXX")]`. Infra/probe: `[Trait(Traits.Task, "SW-INFRA")]`. CI filter: `dotnet test --filter "task=SW-1234"` / `"requirement=SW-5678"`. Internal-only projects skip both. |
 | Per-project files | `Usings.cs` (every project); `Traits.cs` only when the project uses trait keys |
 | Test data | Builder helper or `Bogus` — never scattered hand-rolled literals |
 | Formatting | `dotnet format --severity error` before staging |
