@@ -26,9 +26,13 @@ Split into separate projects from day one. Mixing tiers in a single `*.Tests` pr
 - **`async`/`await` all the way down.** Pass `TestContext.Current.CancellationToken` (xUnit v3) to every async API that accepts one — the `xUnit1051` analyzer warns when you don't.
 - **No `Thread.Sleep`, no arbitrary delays.** If a test is flaky on timing, the production code has a race. Fix the race, not the test.
 - **One assertion concept per test.** Multiple `.Should()` calls are fine if they verify the same logical outcome.
-- **Requirements traceability — required for regulated projects, optional for internal-only projects.**
-  - **Required** (medical-device software, customer-facing backends, anything under an IEC 62304 / regulatory audit trail): every test method carries `[Trait(Traits.Requirement, "SW-XXXX")]` linking it to a **software requirement** — not a Jira task / sprint ticket. Where requirements live (Jira "Requirement" issues, an IEC 62304 trace matrix, a separate spec) is a project decision. Tests that don't map to a single requirement (route-sanity probes, log-assertion teardowns) use `[Trait(Traits.Requirement, "SW-INFRA")]` or another agreed sentinel.
-  - **Optional** (internal tools, dev tooling, throwaway experiments): skip the trait entirely — don't fake requirement IDs to "look compliant".
+- **Traceability — two levels, tier-dependent.** Required for regulated projects, optional for internal-only projects.
+  - **Required** (medical-device software, customer-facing backends, anything under an IEC 62304 / regulatory audit trail): every test method carries a trait linking it to a Jira issue. The trait key depends on the tier:
+    - **Unit + Integration tests** → `[Trait(Traits.Task, "SW-XXXX")]` — links to a Jira issue of type **Task** (the work item that introduced the behaviour).
+    - **Functional / e2e tests** → `[Trait(Traits.Requirement, "SW-XXXX")]` — links to a Jira issue of type **Requirement** (the user-facing capability the journey verifies).
+    - Both keys point at the same Jira project; the issue *type* (Task vs Requirement) tells the audit trail what level of contract the test is verifying.
+    - Tests that don't map to a single Jira issue (route-sanity probes, log-assertion teardowns) use `[Trait(Traits.Task, "SW-INFRA")]` or another agreed sentinel — never omit the trait at the required tier.
+  - **Optional** (internal tools, dev tooling, throwaway experiments): skip both traits entirely — don't fake IDs to "look compliant".
   - If the project's README / `CLAUDE.md` is silent and the project ships software to a regulated context, **assume traceability is required**.
 
 ---
@@ -99,14 +103,19 @@ global using NSubstitute;
 
 ### `Traits.cs` *(only in projects that use traits)*
 
-Ship this when the project requires requirements traceability **or** uses trait keys for filtering (`Category`, `Speed`, etc.). Internal-only projects without traceability can skip the file.
+Ship this when the project requires traceability **or** uses trait keys for filtering (`Category`, `Speed`, etc.). Internal-only projects without traceability can skip the file. Exposes both `Task` and `Requirement` keys so each tier picks the right one:
 
 ```csharp
 namespace MyApp.UnitTests;
 
 public static class Traits {
+    /// <summary>Jira issue of type "Task" — used on unit and integration tests.</summary>
+    public const string Task = "task";
+
+    /// <summary>Jira issue of type "Requirement" — used on functional / e2e tests.</summary>
     public const string Requirement = "requirement";
-    // Add other keys here — never invent ad-hoc strings.
+
+    // Add other keys here (Category, Speed, …) — never invent ad-hoc strings.
 }
 ```
 
@@ -148,6 +157,7 @@ public class InvoiceServiceTests {
     public InvoiceServiceTests() => _sut = new InvoiceService(_repository);
 
     [Fact]
+    [Trait(Traits.Task, "SW-1234")] // Jira Task that introduced this behaviour (regulated projects only)
     public async Task Approve_PendingInvoice_SetsStatusApproved() {
         var invoice = new Invoice { Status = InvoiceStatus.Pending };
 
@@ -328,6 +338,7 @@ public class CreateInvoiceEndpointTests : IClassFixture<WebFactoryFixture> {
     }
 
     [Fact]
+    [Trait(Traits.Task, "SW-1234")] // Integration tests link to the Jira Task — same key as unit tests
     public async Task Create_AsAdmin_ReturnsCreated() {
         await _factory.ResetDatabaseAsync();
         var client = AuthedClient("Admin");
@@ -615,6 +626,7 @@ This pattern requires the production `Program.cs` to expose `ConfigureServices(b
 
 ```csharp
 [Fact]
+[Trait(Traits.Requirement, "SW-5678")] // Functional tests link to the Jira Requirement — NOT the Task
 public async Task Login_WithValidCredentials_RedirectsToDashboard() {
     using var pw = await Playwright.CreateAsync();
     await using var browser = await pw.Chromium.LaunchAsync(new() { Headless = true });
@@ -712,7 +724,8 @@ Filter via `dotnet test --filter` on traits, project, or class — never by test
 dotnet test --project tests/MyApp.UnitTests/MyApp.UnitTests.csproj
 dotnet test --project tests/MyApp.IntegrationTests/MyApp.IntegrationTests.csproj
 dotnet test --project tests/MyApp.FunctionalTests/MyApp.FunctionalTests.csproj
-dotnet test --filter "requirement=SW-1234"
+dotnet test --filter "task=SW-1234"        # all unit + integration tests for a Jira Task
+dotnet test --filter "requirement=SW-5678" # all functional / e2e tests for a Requirement
 PLAYWRIGHT_TRACING=1 dotnet test --project tests/MyApp.FunctionalTests/MyApp.FunctionalTests.csproj
 dotnet run --project tests/MyApp.Benchmarks --configuration Release -- --filter "*"
 ```
@@ -751,7 +764,7 @@ dotnet run --project tests/MyApp.Benchmarks --configuration Release -- --filter 
 | Razor — form binding bugs | Form round-trip test: render → harvest emitted `name` attrs → POST back → assert 302 + captured DTO; pin culture to invariant; `AllowAutoRedirect = false` |
 | Benchmarks | BenchmarkDotNet, `[MemoryDiagnoser]`, dedicated runner, scheduled cadence |
 | Docker for tests | Hosts dependencies, never the test runner; never benchmarks |
-| Traceability | **Regulated projects only**: `[Trait(Traits.Requirement, "SW-XXXX")]` linking to a software requirement; infra/probe tests use `SW-INFRA`. **Internal-only projects**: skip the trait. |
+| Traceability | **Regulated projects only**, two levels: unit + integration tests use `[Trait(Traits.Task, "SW-XXXX")]` (Jira Task that introduced the behaviour); functional / e2e tests use `[Trait(Traits.Requirement, "SW-XXXX")]` (Jira Requirement the user-facing journey verifies). Infra/probe tests use `SW-INFRA` under `Traits.Task`. **Internal-only projects**: skip both traits. |
 | Per-project files | `Usings.cs` (every project); `Traits.cs` only when the project uses trait keys |
 | Test data | Builder helper or `Bogus` — never scattered hand-rolled literals |
 | Formatting | `dotnet format --severity error` before staging |
