@@ -12,6 +12,7 @@ Language-agnostic plugin for the cmo-claude-plugins marketplace. Provides code r
 | Command | `/pr` | Push branch and open a PR — never merges; reviewer handles that |
 | Command | `/create-jira-task` | Create a sized, assigned, sprinted Jira task via REST API |
 | Skill | `coding-standards` | SOLID + Fowler smells + clean code (universal) |
+| Skill | `testing-standards` | Tier structure, two-level Jira traceability (Task / Requirement), test independence and parallelism, scenario coverage (universal) |
 | Skill | `git-operations` | Conventional commits, no AI attribution, branch hygiene |
 | Skill | `security-review` | Secrets, input validation, SQL injection, authz, XSS, CSRF, rate limiting |
 | Hook | `skill-reminder` | UserPromptSubmit reminder listing all available skills |

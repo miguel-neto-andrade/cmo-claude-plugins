@@ -8,8 +8,8 @@
     {
       "name": "cmo-core",
       "source": "./cmo-core",
-      "description": "TODO",
-      "version": "0.1.0"
+      "description": "General code architecture, code review, and git operations — universal coding-standards, testing-standards (tier model + two-level Jira traceability + parallelism), security review, code-review and project-analysis agents.",
+      "version": "0.2.0"
     },
     {
       "name": "cmo-python",
@@ -26,8 +26,8 @@
     {
       "name": "cmo-dotnet",
       "source": "./cmo-dotnet",
-      "description": "TODO",
-      "version": "0.1.0"
+      "description": "C# / .NET ≥ 8.0 conventions and testing skills (ASP.NET Core, EF Core, MediatR/CQRS, WebApplicationFactory, Testcontainers, xUnit). Reviewer agent and /dn-new-controller command are scaffolds.",
+      "version": "0.2.0"
     },
     {
       "name": "cmo-firmware",

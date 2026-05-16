@@ -213,12 +213,12 @@ At any system boundary, parse incoming data into a strongly-typed object **befor
 
 ## Testing
 
-- **xUnit** + **FluentAssertions** as the standard. NUnit / MSTest allowed in legacy projects.
-- **Mocking**: NSubstitute (preferred) or Moq.
-- **Integration tests**: `WebApplicationFactory<TEntryPoint>` for in-process HTTP, Testcontainers for real database tests (Postgres / SQL Server in Docker).
-- Layout: `tests/<Project>.Tests/` mirroring `src/<Project>/`. Test class `<TypeUnderTest>Tests`, test method `Method_Condition_ExpectedResult`.
-- One assertion focus per test where practical.
-- Test data: use a builder pattern or `Bogus` for fakes — not hand-rolled object literals scattered across files.
+Testing conventions live in dedicated skills — load them when writing or reviewing tests:
+
+- **`cmo-core/testing-standards`** — the universal rules: tier model (Unit / Integration / Functional / Performance), two-level Jira traceability (`Task` key for unit + integration, `Requirement` key for functional / e2e), test independence and parallel execution, scenario coverage, anti-flake rules, naming, test data, source-mirror layout.
+- **`cmo-dotnet/dotnet-testing`** — the .NET-specific *how*: xUnit v3 on MTP, `WebApplicationFactory<MyApp.Web.Program>`, Testcontainers wiring, AwesomeAssertions, NSubstitute, MediatR/CQRS handler patterns, Razor view-rendering and form round-trip probes, BenchmarkDotNet.
+
+Anything previously written in this section now lives in those skills.
 
 ## URL generation
 
@@ -242,8 +242,8 @@ At any system boundary, parse incoming data into a strongly-typed object **befor
 | Format | `dotnet format` |
 | Style enforcement | `.editorconfig` + Roslyn analyzers (built-in) |
 | Style enforcement (optional) | StyleCop.Analyzers as a PackageReference |
-| Test | xUnit + FluentAssertions |
-| Mocking | NSubstitute (preferred) or Moq |
+| Test | xUnit v3 on MTP + AwesomeAssertions — see `cmo-dotnet/dotnet-testing` |
+| Mocking | NSubstitute — see `cmo-dotnet/dotnet-testing` |
 | Coverage | Coverlet + ReportGenerator |
 | Build | `dotnet build /warnaserror` — warnings fail the build |
 
@@ -290,7 +290,7 @@ CI must run the same commands.
 | API responses | Strongly-typed; never `dynamic` / `Dictionary<string, object>` |
 | Logging | `ILogger<T>`, structured placeholders, never log secrets |
 | Exceptions | Throw specific types; never swallow; never leak details at the boundary |
-| Tests | xUnit + FluentAssertions; NSubstitute or Moq |
+| Tests | See `cmo-core/testing-standards` (universal rules) + `cmo-dotnet/dotnet-testing` (.NET specifics) |
 | Build | `/warnaserror` — warnings fail the build |
 | Library docs | WebSearch / Context7 — never read `~/.nuget/` source |
 | File moves | Always `git mv` |

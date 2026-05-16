@@ -6,10 +6,10 @@ Claude Code plugin marketplace for C-Mo Solutions. Bundles a language-agnostic c
 
 | Plugin | Status | Scope |
 |---|---|---|
-| [`cmo-core`](./cmo-core/README.md) | Filled | Language-agnostic: code review, project analysis, git/PR, Jira task creation, coding/security/git skills, skill-reminder hook |
+| [`cmo-core`](./cmo-core/README.md) | Filled | Language-agnostic: code review, project analysis, git/PR, Jira task creation, `coding-standards` + `testing-standards` + `security-review` + `git-operations` skills, skill-reminder hook |
 | `cmo-python` | Scaffold | Python-specific agents, commands, and skills |
 | `cmo-frontend` | Scaffold | Vue/frontend-specific agents, commands, and skills |
-| `cmo-dotnet` | Scaffold | .NET-specific agents, commands, and skills |
+| `cmo-dotnet` | Skill only | `dotnet-conventions` (language, EF Core, ASP.NET Core) and `dotnet-testing` (xUnit on MTP, `WebApplicationFactory<Program>`, Testcontainers, CQRS handler patterns, Razor view/form probes — defers to `cmo-core/testing-standards` for the universal rules) skills filled. `dotnet-reviewer` agent and `/dn-new-controller` command are TODO scaffolds. |
 | `cmo-firmware` | Scaffold | Firmware-specific agents, commands, and skills |
 
 `cmo-core` is the only plugin with fully written content today. The stack-specific plugins are placeholders (TODO bodies) that Miguel fills in as conventions stabilise per stack.
@@ -60,11 +60,11 @@ cmo-claude-plugins/
 │   ├── .claude-plugin/plugin.json
 │   ├── agents/              # code-reviewer, project-analyzer
 │   ├── commands/            # /pr, /clear-repo, /create-jira-task
-│   ├── skills/              # coding-standards, security-review, git-operations
+│   ├── skills/              # coding-standards, testing-standards, security-review, git-operations
 │   └── hooks/               # skill-reminder
 ├── cmo-python/              # scaffold — placeholder agents/commands/skills
 ├── cmo-frontend/            # scaffold
-├── cmo-dotnet/              # scaffold
+├── cmo-dotnet/              # skills filled (dotnet-conventions, dotnet-testing); agent + command TODO
 └── cmo-firmware/            # scaffold
 ```
 
