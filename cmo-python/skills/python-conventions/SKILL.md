@@ -125,11 +125,16 @@ if a == 1: ...
 
 ## Testing
 
-- **pytest** — unit and integration tests.
-- Layout: `tests/` directory mirroring the package structure under `src/`.
-- Test names: `test_<unit>_<scenario>_<expected>` (`test_calculate_total_zero_quantity_returns_zero`).
-- Use fixtures for shared setup; avoid `setUp`/`tearDown` (unittest style).
-- One assertion focus per test where practical — multiple `assert` lines are fine if they verify the same behavior.
+Universal testing rules — tier structure (Unit / Integration / Functional / Performance), two-level Jira traceability (`Task` key for unit + integration, `Requirement` key for functional / e2e), test independence and parallel execution, scenario coverage, anti-flake rules, naming, test data — live in **`cmo-core/testing-standards`**. Load it whenever writing or reviewing Python tests.
+
+Python-specific concretions until a dedicated `python-testing` skill exists:
+
+- **pytest** as the runner; **`pytest-xdist`** for parallel execution (`pytest -n auto`).
+- Traceability traits as pytest markers — `@pytest.mark.task("SW-1234")` for unit + integration, `@pytest.mark.requirement("SW-5678")` for functional. Register the markers in `pyproject.toml` under `[tool.pytest.ini_options].markers`.
+- Test file naming: `test_<unit>.py`; test function naming: `test_<unit>_<scenario>_<expected>` (e.g. `test_calculate_total_zero_quantity_returns_zero`).
+- Use fixtures for shared setup; avoid `setUp`/`tearDown` (unittest style). One fixture per concern; compose via dependency injection.
+- For HTTP integration tests, use `httpx.AsyncClient(transport=ASGITransport(app=...))` against the real FastAPI / Starlette app.
+- For DB integration tests, use **Testcontainers for Python** (`testcontainers-postgres`, …) — never SQLite as a stand-in for the production provider.
 
 ## Project layout
 
@@ -156,7 +161,7 @@ project/
 | Format | **Ruff format** (or Black) |
 | Lint | **Ruff** (replaces flake8 + isort + pyupgrade + most pylint) |
 | Type check | **mypy strict** or **pyright strict** |
-| Test | **pytest** |
+| Test | **pytest** + `pytest-xdist` — see `cmo-core/testing-standards` for the universal rules |
 | Dependencies | **uv** for new projects; legacy repos may stay on `pip` |
 
 **On dependency tooling:** use `uv` whenever you're starting a new Python project. Older repos still on `pip` + `requirements.txt` are fine — don't churn them just to switch resolvers. Don't introduce `poetry` or `pipenv` to a repo that doesn't already have them.

@@ -22,14 +22,21 @@ When invoked:
 
 Skills are located under `~/.claude/` — to load a skill by name, search for `~/.claude/**/skills/{skill-name}/SKILL.md` using Glob, then read it.
 
-Based on the file extensions and markers in the diff, load the matching skill and verify the changes comply with its conventions:
+Based on the file extensions and markers in the diff, load the matching skill(s) and verify the changes comply with their conventions. A single diff often matches multiple rows — load all that apply.
 
-| Changed files match | Skill to load |
+| Changed files match | Skill(s) to load |
 |---|---|
-| `*.cs`, `*.csproj`, `*.sln` | `dotnet-conventions` |
+| `tests/**`, `*Tests.cs`, `*Tests.fs`, `test_*.py`, `*.spec.ts`, `*.test.ts`, `*Test.cpp`, `*Test.cs` | `testing-standards` (universal) |
+| `*.cs`, `*.csproj`, `*.sln` (production code) | `dotnet-conventions` |
+| `*.cs` under `tests/**` or matching `*Tests.cs` | `dotnet-testing` |
 | `*.vue`, `*.ts`, `*.tsx` | `vue-conventions` |
 | `*.py`, `pyproject.toml`, `requirements.txt` | `python-conventions` |
 | `*.c`, `*.h`, `*.cpp`, `*.hpp`, `platformio.ini`, `CMakeLists.txt` | `firmware-conventions` |
+
+Combined-skill examples:
+- .NET production code changes: `dotnet-conventions`.
+- .NET test changes: `testing-standards` + `dotnet-testing` (+ `dotnet-conventions` if production code is also touched in the same diff).
+- Any-language test changes: `testing-standards` + the stack's testing skill (when one exists).
 
 If a matched skill is not installed, skip it silently. If found, read it and include a **Skill Compliance** section in the review output checking the diff against the skill's rules.
 

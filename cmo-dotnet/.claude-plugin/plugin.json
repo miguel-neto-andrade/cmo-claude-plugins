@@ -1,6 +1,6 @@
 {
   "name": "cmo-dotnet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "C# / .NET ≥ 8.0 conventions and testing skills (ASP.NET Core, EF Core, MediatR/CQRS, WebApplicationFactory, Testcontainers, xUnit). Reviewer agent and /dn-new-controller command are scaffolds.",
   "author": {
     "name": "C-Mo Solutions",
