@@ -20,7 +20,7 @@
     {
       "name": "cmo-frontend",
       "source": "./cmo-frontend",
-      "description": "TODO",
+      "description": "Frontend conventions for C-Mo Vue 3 / React projects, Bootstrap 5 + SCSS, the internal design system, and Ionic + Capacitor mobile apps. Skills are scaffolds.",
       "version": "0.1.0"
     },
     {
