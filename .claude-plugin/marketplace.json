@@ -20,8 +20,8 @@
     {
       "name": "cmo-frontend",
       "source": "./cmo-frontend",
-      "description": "Frontend conventions for C-Mo Vue 3 / React projects, Bootstrap 5 + SCSS, the internal design system, and Ionic + Capacitor mobile apps. Skills are scaffolds.",
-      "version": "0.1.0"
+      "description": "Frontend skills for C-Mo: vue-conventions, react-conventions, bootstrap-scss, cmo-design-system (defers to in-package skill), ionic-capacitor, frontend-testing (defers to cmo-core/testing-standards). All enforce the no-business-logic-on-frontend rule and TanStack Query for server state.",
+      "version": "0.2.0"
     },
     {
       "name": "cmo-dotnet",

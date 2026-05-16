@@ -20,7 +20,7 @@ Available skills and when to load them:
 - vue-conventions — Vue 3 frontend work (SFCs, Composition API, Pinia, Vue Router, TypeScript)
 - react-conventions — React frontend work (function components, hooks, React Router, TanStack Query, TypeScript)
 - bootstrap-scss — Bootstrap 5 + custom SCSS (utility usage, theming, overrides, SCSS file structure)
-- cmo-design-system — C-Mo internal apps importing the C-Mo Internal Design System (component imports, theme tokens, migration off raw Bootstrap)
+- cmo-design-system — C-Mo internal apps importing the design system: install / Bootstrap coexistence / migration patterns / tokens-only rule. Component catalog itself lives in the in-package skill (loaded separately after `npx cmo-install-skill`).
 - ionic-capacitor — Ionic + Capacitor mobile apps (Ionic components, Capacitor plugins, platform-specific code, native build)
 - frontend-testing — Frontend tests (Vitest, Vue Test Utils / React Testing Library, Playwright/Cypress, Capacitor testing) — load with testing-standards
 - dotnet-conventions — C# / .NET Core (ASP.NET Core, EF Core)
