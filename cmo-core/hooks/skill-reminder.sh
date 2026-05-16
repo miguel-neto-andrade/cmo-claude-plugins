@@ -13,13 +13,20 @@ Invoke as: Skill(skill="<name>") — e.g., Skill(skill="git-operations")
 
 Available skills and when to load them:
 - coding-standards — ANY code work (universal, load alongside language-specific skills)
+- testing-standards — ANY test work (universal: tier model, two-level Jira traceability, parallelism, scenario coverage); load alongside the language-specific testing skill
 - git-operations — ANY git/GitHub operation (commit, push, branch, PR, issue)
 - security-review — Security audits, auth/input validation review
 - python-conventions — Python ≥ 3.10 (naming, type hints, docstrings, pytest, ruff/mypy, project layout)
 - vue-conventions — Vue 3 + TypeScript frontend work
 - dotnet-conventions — C# / .NET Core (ASP.NET Core, EF Core)
+- dotnet-testing — Writing, reviewing, or scaffolding .NET tests (xUnit on MTP, WebApplicationFactory, Testcontainers, CQRS handlers, Razor view/form probes, BenchmarkDotNet) — load with testing-standards
 - firmware-conventions — Embedded firmware work (C/C++, PlatformIO, CMake)
 
-Multiple skills often apply together (e.g., coding-standards + dotnet-conventions for .NET work). Load ALL that match.
+Multiple skills often apply together — e.g.:
+- .NET code: coding-standards + dotnet-conventions
+- .NET tests: coding-standards + testing-standards + dotnet-testing (+ dotnet-conventions if also touching production code)
+- Any language tests: coding-standards + testing-standards + the stack's testing skill
+
+Load ALL that match.
 </system-reminder>
 EOF
