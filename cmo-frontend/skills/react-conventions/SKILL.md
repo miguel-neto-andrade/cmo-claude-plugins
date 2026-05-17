@@ -62,6 +62,7 @@ Group by feature inside `components/`, `pages/`, and `stores/` once a folder has
 ```tsx
 import { useMemo } from 'react';
 import type { Invoice } from '@/types/invoice';
+import './InvoiceCard.scss';
 
 type InvoiceCardProps = {
   invoice: Invoice;
@@ -77,7 +78,7 @@ export function InvoiceCard({ invoice, compact = false, onApprove, onReject }: I
   );
 
   return (
-    <article className={`invoice-card ${compact ? 'is-compact' : ''}`}>
+    <article className={`invoice-card ${compact ? 'invoice-card--compact' : ''}`}>
       <h3>{invoice.number}</h3>
       <p>{total}</p>
       <button onClick={() => onApprove(invoice.id)}>Approve</button>
@@ -86,9 +87,25 @@ export function InvoiceCard({ invoice, compact = false, onApprove, onReject }: I
 }
 ```
 
+```
+components/InvoiceCard/
+├── InvoiceCard.tsx
+└── InvoiceCard.scss
+```
+
 - **Named exports**, not default. Better for refactors, IDE rename, and grep.
 - **`Props` type alias** with the `Props` suffix. Use `interface` only when actually extending one.
 - **Don't destructure all props in the signature** when there are many — pull them inside the body for readability.
+
+## Styles
+
+**SCSS lives in its own `.scss` file, never as a string literal, styled-component, or `style={{…}}` block.** Import the sibling file at the top of the `.tsx` (`import './InvoiceCard.scss';`) and target it via `className`.
+
+- **One `.scss` file per component**, named the same as the component, in the same folder.
+- **Use BEM** to scope styles (`.invoice-card`, `.invoice-card__header`, `.invoice-card--compact`). BEM gives you scoping without CSS-in-JS overhead.
+- **No CSS-in-JS** (`styled-components`, `emotion`, `@stitches`). Adds runtime cost, splits the SCSS conventions in `bootstrap-scss`, and makes styles ungreppable.
+- **No inline `style={{…}}`** except for a genuinely dynamic numeric value (`style={{ width: `${progress}%` }}`) that can't be expressed as a class.
+- **Global styles, design tokens, and Bootstrap overrides** live under `src/styles/` per `bootstrap-scss`.
 
 ## Naming
 
@@ -261,6 +278,7 @@ Frontend test conventions live in their own skill — load it when writing or re
 | Props | `Props` type alias, never mutated, booleans default `false` |
 | `useEffect` | Last resort — most uses belong in TanStack Query or `useMemo` |
 | Memoisation | `memo` / `useMemo` / `useCallback` only with a profile or dep-array reason |
+| Styles | Sibling `.scss` file per component (BEM-scoped); no CSS-in-JS; no inline `style` |
 | Routing | React Router 6 data routers, lazy-loaded route elements |
 | Forms | React Hook Form + Zod; client-side validation is a hint, not a boundary |
 | Accessibility | Semantic HTML, labels, contrast, keyboard reachability |

@@ -61,12 +61,13 @@ Group by feature inside `components/`, `views/`, and `stores/` once a folder has
 
 ## Single-file component structure
 
-Order inside an SFC: `<script setup>`, then `<template>`, then `<style scoped>`. Readers reach for the script first to understand what the component is, the template to see what it renders, and the style last.
+Order inside an SFC: `<script setup>`, then `<template>`. **No `<style>` block** — styles live in a sibling `.scss` file (see "Styles" below). Readers reach for the script first to understand what the component is, then the template to see what it renders.
 
 ```vue
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Invoice } from '@/types/invoice';
+import './InvoiceCard.scss';
 
 const props = defineProps<{
   invoice: Invoice;
@@ -88,17 +89,28 @@ const total = computed(() => formatCurrency(props.invoice.amount, props.invoice.
     <button @click="emit('approve', invoice.id)">Approve</button>
   </article>
 </template>
-
-<style scoped lang="scss">
-.invoice-card {
-  // …
-}
-</style>
 ```
 
-- **`<style scoped>`** by default. Reach for `:deep()` or a global stylesheet only when you genuinely need to style child components.
-- **`lang="scss"`** on styles (matches the SCSS conventions — see `bootstrap-scss` skill).
-- No inline `style` attributes. Use classes and `:class` bindings.
+```
+components/InvoiceCard/
+├── InvoiceCard.vue
+└── InvoiceCard.scss
+```
+
+## Styles
+
+**SCSS lives in its own `.scss` file, never inside the SFC.** Don't use `<style>` / `<style scoped>` blocks in `.vue` files. Reasons:
+
+- The SCSS conventions (`bootstrap-scss` skill) — variable overrides, partial imports, BEM, the `_variables.scss` chain — only work coherently when styles are real files that can `@use` / `@forward` each other. `<style scoped>` blocks are islands.
+- A sibling `.scss` file is greppable, editable in any SCSS-aware tool, and reusable across components that share a pattern.
+- `scoped` styles produce per-instance attribute selectors that fight Bootstrap's specificity and inflate the CSS bundle.
+
+Conventions:
+
+- **One `.scss` file per component**, named the same as the component, in the same folder. Import it from the `<script setup>` block (`import './InvoiceCard.scss';`).
+- **Use BEM** to scope styles to the component (`.invoice-card`, `.invoice-card__header`, `.invoice-card--compact`). BEM gives you scoping without the `<style scoped>` machinery.
+- **No inline `style` attributes.** Use classes and `:class` bindings. The one acceptable use is binding a dynamic numeric value (`:style="{ width: progress + '%' }"`) that genuinely can't be expressed as a class.
+- **Global styles, design tokens, and Bootstrap overrides** live under `src/styles/` per `bootstrap-scss`.
 
 ## Naming
 
@@ -288,7 +300,7 @@ Frontend test conventions live in their own skill — load it when writing or re
 | Composables | `useThing()`, return an object of refs, one per file |
 | Routing | Vue Router 4, named routes + `router.push`, lazy-load components |
 | Forms | Form library + schema validator; client-side is a hint, not a boundary |
-| Styles | `scoped lang="scss"` by default; no inline `style` |
+| Styles | Sibling `.scss` file per component (BEM-scoped); never `<style>` blocks inside SFCs; no inline `style` |
 | Accessibility | Semantic HTML, labels, contrast, keyboard reachability |
 | Lint / format / types | ESLint + plugin-vue, Prettier/Biome, `vue-tsc --noEmit` — CI gates all |
 | Tests | See `cmo-core/testing-standards` + `cmo-frontend/frontend-testing` |

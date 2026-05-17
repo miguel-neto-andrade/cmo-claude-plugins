@@ -72,6 +72,29 @@ $border-radius-lg: 0.75rem;
 
 Bootstrap re-derives dozens of downstream values (`btn-primary`, `bg-primary`, alert variants, etc.) from these. Override the source; don't restyle the leaves.
 
+## Layout hierarchy — always `.container > .row > .col`
+
+Bootstrap's grid is the only sanctioned way to lay out a page. Every layout must follow the strict hierarchy:
+
+```html
+<div class="container">          <!-- or .container-fluid / .container-{breakpoint} -->
+  <div class="row">
+    <div class="col-12 col-md-6">…</div>
+    <div class="col-12 col-md-6">…</div>
+  </div>
+</div>
+```
+
+Rules:
+
+- **A `.row` only ever lives directly inside a `.container` (or another `.col`, for nested grids).** Never a bare `.row` at the page root — it produces negative-margin overflow and breaks the page width on small screens.
+- **A `.col` only ever lives directly inside a `.row`.** Cols outside a row lose their flex behaviour and their gutter math.
+- **Don't reach for `d-flex` / `d-grid` as a substitute for the grid** when you're laying out a page section. The grid handles responsive breakpoints, gutters, and ordering for free. Use `d-flex` for *intra-component* layout (button row, card header), not for page structure.
+- **Pick the right container** — `.container` (fixed-width, recommended default), `.container-fluid` (full-width edge-to-edge), `.container-{breakpoint}` (fluid up to a breakpoint, then fixed). One container per page section; don't nest containers.
+- **One `.row` per logical row of content.** Don't cram unrelated cols into the same row to "save markup" — it makes responsive behaviour incoherent.
+
+If you find a layout where this hierarchy doesn't fit, the answer is almost always "use the grid correctly" — not "skip the grid." Open a discussion before introducing bespoke layout primitives.
+
 ## Utility-first vs custom CSS
 
 Bootstrap 5's utility classes (`d-flex`, `gap-3`, `text-truncate`, `mb-4`) are the default for **layout and spacing**. Custom CSS is for things utilities can't express (animations, complex selectors, deep theming, brand-specific patterns).

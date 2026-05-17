@@ -108,9 +108,14 @@ describe('InvoiceCard', () => {
 - **`userEvent` over `fireEvent`.** `userEvent` simulates the full event sequence a real user produces.
 - **`waitFor` / `findBy*` for async** — these poll until the assertion passes or times out.
 
-## MSW for network mocking
+## Mocking the network
 
-Mock the network at the HTTP boundary, not at the hook / component layer. **MSW** (Mock Service Worker) intercepts `fetch` / `axios` calls and serves your handlers — the component code under test runs exactly as in production.
+In an integration test, the component under test usually fires real `fetch` / `axios` calls (through its hooks / TanStack Query). Two ways to keep those calls from leaving the suite:
+
+1. **`vi.mock('@/api/invoices')`** — replace your own query/mutation module with a stub. Cheap, zero deps. Right for a narrow unit test that only cares "did the component call `useInvoice`?" — but it skips the real query / cache / error paths, so a bug inside the hook won't fail the test.
+2. **MSW (Mock Service Worker)** — intercept at the HTTP boundary. The component, the hook, TanStack Query, the http client all run exactly as they do in production; only the network response is faked. This is what you want for any integration test that exercises a real data path (which is most of them, per the tier mapping above).
+
+**Default to MSW for the integration tier.** It catches bugs the module-mock approach can't (wrong URL, wrong headers, wrong response shape, broken retry/invalidation logic). Reach for `vi.mock` only when you genuinely don't need the HTTP layer in the test.
 
 ```ts
 // test/setup.ts
@@ -177,6 +182,42 @@ Skip:
 
 - **Style assertions** — `expect(button).toHaveStyle({ color: 'red' })` is brittle and tests the framework. Use visual regression for that.
 - **Implementation details** — internal state shape, method counts, etc.
+
+## Locating backend repos
+
+The backend a frontend talks to almost always lives in a separate repo. E2E tests need to reach it for fixtures (seed scripts, OpenAPI specs, test-user factories), and other frontend tooling (codegen, type sync, contract checks) needs the same. Don't hardcode paths — declare them once at the frontend repo root.
+
+Convention: a `.cmo/backends.json` file at the frontend repo root, listing each backend the frontend depends on, with a stable name and the local path (relative to the frontend repo, resolvable from a sibling checkout).
+
+```json
+// .cmo/backends.json
+{
+  "backends": {
+    "invoices-api": {
+      "repo": "git@github.com:c-mo-medical-solutions/invoices-api.git",
+      "localPath": "../invoices-api",
+      "fixturesPath": "tests/fixtures",
+      "openapiPath": "docs/openapi.yaml"
+    },
+    "auth-api": {
+      "repo": "git@github.com:c-mo-medical-solutions/auth-api.git",
+      "localPath": "../auth-api",
+      "fixturesPath": "tests/fixtures"
+    }
+  }
+}
+```
+
+Per-developer overrides go in `.cmo/backends.local.json` (gitignored) — for engineers who keep checkouts in non-standard locations.
+
+Rules:
+
+- **Read the config, don't hardcode.** Playwright `globalSetup`, codegen scripts, and any other tool that needs a backend path resolves it through a small helper (`getBackend('invoices-api').fixturesPath`).
+- **Fail loudly if a referenced backend isn't checked out.** Better to error with "expected ../invoices-api, not found — clone it or override in `.cmo/backends.local.json`" than to silently 404 mid-test.
+- **CI override via env vars** — `CMO_BACKEND_INVOICES_API_PATH=/workspace/invoices-api` overrides the JSON. CI mounts the sibling repos at known paths; engineers don't have to think about it.
+- **Same config powers more than tests** — codegen (regenerating TS types from a sibling backend's OpenAPI), local-dev orchestration (which backends to spin up), contract-test runners. Define it once.
+
+If the project doesn't have a backend in a sibling repo yet, skip this — but add the file the moment a second repo enters the picture.
 
 ## E2E — Playwright (default)
 
