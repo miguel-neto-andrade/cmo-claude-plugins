@@ -8,11 +8,11 @@ Claude Code plugin marketplace for C-Mo Solutions. Bundles a language-agnostic c
 |---|---|---|
 | [`cmo-core`](./cmo-core/README.md) | Filled | Language-agnostic: code review, project analysis, git/PR, Jira task creation, `coding-standards` + `testing-standards` + `security-review` + `git-operations` skills, skill-reminder hook |
 | `cmo-python` | Scaffold | Python-specific agents, commands, and skills |
-| `cmo-frontend` | Scaffold | Vue/frontend-specific agents, commands, and skills |
+| `cmo-frontend` | Skills only | `vue-conventions`, `react-conventions`, `bootstrap-scss`, `cmo-design-system` (integration / migration; defers to the in-package skill for component reference), `ionic-capacitor`, and `frontend-testing` (defers to `cmo-core/testing-standards` for universal rules) skills filled. No agents or commands yet. |
 | `cmo-dotnet` | Skill only | `dotnet-conventions` (language, EF Core, ASP.NET Core) and `dotnet-testing` (xUnit on MTP, `WebApplicationFactory<Program>`, Testcontainers, CQRS handler patterns, Razor view/form probes — defers to `cmo-core/testing-standards` for the universal rules) skills filled. `dotnet-reviewer` agent and `/dn-new-controller` command are TODO scaffolds. |
 | `cmo-firmware` | Scaffold | Firmware-specific agents, commands, and skills |
 
-`cmo-core` is the only plugin with fully written content today. The stack-specific plugins are placeholders (TODO bodies) that Miguel fills in as conventions stabilise per stack.
+`cmo-core`, `cmo-dotnet`, and `cmo-frontend` carry filled content today. The remaining stack-specific plugins (`cmo-python`, `cmo-firmware`) are placeholders (TODO bodies) that Miguel fills in as conventions stabilise per stack.
 
 ## Installation
 
@@ -63,7 +63,7 @@ cmo-claude-plugins/
 │   ├── skills/              # coding-standards, testing-standards, security-review, git-operations
 │   └── hooks/               # skill-reminder
 ├── cmo-python/              # scaffold — placeholder agents/commands/skills
-├── cmo-frontend/            # scaffold
+├── cmo-frontend/            # six skills filled (vue, react, bootstrap-scss, cmo-design-system, ionic-capacitor, frontend-testing)
 ├── cmo-dotnet/              # skills filled (dotnet-conventions, dotnet-testing); agent + command TODO
 └── cmo-firmware/            # scaffold
 ```

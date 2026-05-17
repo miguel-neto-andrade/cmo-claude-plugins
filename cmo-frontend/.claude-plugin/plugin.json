@@ -1,7 +1,7 @@
 {
   "name": "cmo-frontend",
-  "version": "0.1.0",
-  "description": "TODO",
+  "version": "0.2.0",
+  "description": "Frontend skills for C-Mo: vue-conventions, react-conventions, bootstrap-scss, cmo-design-system (defers to in-package skill), ionic-capacitor, frontend-testing (defers to cmo-core/testing-standards). All enforce the no-business-logic-on-frontend rule and TanStack Query for server state.",
   "author": {
     "name": "C-Mo Solutions",
     "email": "engineering@c-mo.solutions"
