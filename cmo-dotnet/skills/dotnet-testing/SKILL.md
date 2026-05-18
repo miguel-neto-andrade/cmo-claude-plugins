@@ -222,7 +222,7 @@ Each test gets a unique InMemory database name (`$"db-{Guid.NewGuid()}"`) — ne
 
 Runs the real ASP.NET Core pipeline in-process via `WebApplicationFactory<MyApp.Web.Program>`. This is the workhorse tier — catches broken policies, broken validators, broken routes, broken EF migrations, and broken MediatR wiring.
 
-**Coverage rule**: **every API endpoint shall be tested at this tier by calling it directly with all its scenarios** — happy path, validation failures, authorisation failures (each role / policy / requirement), not-found, conflict, and any domain-specific error path. Endpoint coverage is the definition of "done" for new controllers.
+**Coverage rule**: Endpoint scenarios are covered *somewhere* — see `cmo-core/testing-standards`. The default split for .NET: exhaustive branch coverage of `IRequestHandler`, `IAuthorizationHandler`, and `IValidator` lives at the unit tier; the integration tier is a per-endpoint **wiring smoke** asserting at the HTTP boundary — one happy-path test plus at least one denied test per policy attached to the action, plus anything only this tier can prove (`UseExceptionHandler` mapping, EF translation, transaction boundaries, middleware ordering). Re-asserting handler branch coverage through `HttpClient` is duplication, not safety. Promote the full matrix here only when an audit trail demands per-endpoint per-role HTTP evidence; document the elevation in the project's `CLAUDE.md`.
 
 ### Stack
 
@@ -386,7 +386,7 @@ public class CreateInvoiceEndpointTests : IClassFixture<WebFactoryFixture> {
 }
 ```
 
-This is the **minimum** scenario coverage for a write endpoint: success, authorisation failure for every non-allowed role, validation failure, and unauthenticated. Read endpoints add not-found and (where relevant) authorisation-by-resource-ownership scenarios. **No endpoint ships without this coverage.**
+The example above is intentionally a wiring smoke at the HTTP boundary: success, one denied per non-allowed role, validation failure, and unauthenticated. The exhaustive per-branch coverage of `CreateInvoiceCommandHandler`, its `AbstractValidator`, and any per-resource `IAuthorizationHandler` lives at the unit tier. Read endpoints add a not-found smoke plus, where applicable, a per-resource-ownership denial smoke; everything else (which branch of "not found" was hit, which validator rule fired) belongs in the handler / validator unit tests.
 
 ### Pattern — route-sanity probe
 

@@ -18,9 +18,18 @@ Every project distinguishes four tiers. Each tier lives in its own test project 
 | Functional / e2e | Top-level user-journey verification, typically browser-based. Only for projects with an end-user-facing surface (web UI, native app). Login flows, checkout, dashboard render. |
 | Performance | Hot-path benchmarking against a stable baseline. Add only when a hot path is identified — never as table-stakes for a new project. |
 
-### Coverage rule — integration tier
+### Coverage rule — endpoint scenarios
 
-**Every API endpoint must be exercised at the integration tier with every scenario** — happy path, validation failures, authorisation failures (each non-allowed role / policy), not-found, conflict, unauthenticated, and any domain-specific error path. "It builds and the unit test passes" is not enough for an endpoint to be considered done.
+Every API endpoint's full scenario set — happy path, validation failures, authorisation failures (each non-allowed role / policy), not-found, conflict, unauthenticated, domain-specific errors — must be **covered somewhere**. The default tier split:
+
+- **Unit tier carries the bulk.** Every branch of the request handler, every branch of each authorisation handler / policy class, every validator rule. These are pure(-ish) functions over their inputs; exhaustive cases run in milliseconds.
+- **Integration tier is a thin wiring layer per endpoint** — one happy-path test plus at least one denied test per policy on the endpoint. Its job is to prove what unit tests cannot see: the right `[Authorize(Policy = …)]` is on the right action, the policy is registered with the correct handler lifetime, middleware ordering and EF translation work end-to-end, and the controller maps the handler's result to the correct status code / response shape.
+
+Re-asserting handler branch coverage at the integration tier is duplication, not safety. Use the slow tier only for what the slow tier can uniquely prove.
+
+**Integration assertions stay at the controller boundary.** Status code, response body shape, headers, and observable side effects on the real dependency (DB rows, queued messages). Integration tests do not reach inside to assert handler internals — that is the unit tier's job.
+
+**Regulated-context exception.** If the project is under an audit trail that requires per-endpoint per-role HTTP-level evidence (typical for medical-device software and similar), promote the full matrix to the integration tier and accept the CI cost — the durable artifact "we hit `/foo` as role Y and got 403" is what an auditor accepts; "we tested the policy handler in isolation" is weaker. Document the elevation in the project's `CLAUDE.md` / testing README so it's an explicit choice, not a habit.
 
 ### Coverage rule — functional / e2e tier
 
@@ -97,7 +106,7 @@ Test files mirror the production folder structure. `src/.../foo/bar/InvoiceServi
 Hitting 80% line coverage with weak assertions is not testing. Coverage is a lagging indicator; **scenario coverage** is the goal:
 
 - Every behaviour change ships with a test that fails without the change and passes with it.
-- Every API endpoint has every scenario covered at the integration tier (see the rule above).
+- Every API endpoint has every scenario covered *somewhere* — most at the unit tier, with a thin wiring smoke at the integration tier (see the rule above).
 - Every critical user journey has at least one functional / e2e smoke test (where the project has a UI).
 
 Reach for line-coverage tools (Coverlet, `pytest --cov`, `c8`, `gcovr`) for **blind-spot detection**, not as a CI gate. A red coverage diff is an invitation to look at what's missing — it is not, by itself, a reason to block a PR.
@@ -111,7 +120,7 @@ Reach for line-coverage tools (Coverlet, `pytest --cov`, `c8`, `gcovr`) for **bl
 | Tiers | Unit / Integration / Functional / Performance — separate projects or modules per stack convention |
 | Unit tier | Pure logic, no I/O, no host, no real external dependencies |
 | Integration tier | Real wiring + real dependencies (Testcontainers in .NET, equivalent elsewhere) via the real entry point |
-| Endpoint coverage | Every API endpoint × every scenario (success / per-role forbidden / validation / not-found / unauthenticated / domain errors) at the integration tier |
+| Endpoint coverage | Every endpoint × every scenario covered *somewhere*. Default: unit tier carries branch coverage (request handler + authorisation handler + validator); integration tier is a per-endpoint wiring smoke (one happy + at least one denied per policy) asserting at the controller boundary. Promote the full matrix to integration only when an audit trail demands HTTP-level evidence. |
 | Functional / e2e tier | Browser-based smoke per critical journey; only for projects with a UI; not full coverage |
 | Performance tier | Add only when a hot path is identified |
 | Parallelism | Tests must run safely in parallel; do not disable the runner's parallelism without a documented reason |
