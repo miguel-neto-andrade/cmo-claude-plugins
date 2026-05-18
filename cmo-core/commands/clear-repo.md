@@ -16,9 +16,13 @@ Clean up the local repository by switching back to the default branch and removi
 
 1. **Never** force-delete a branch (`-D`). Always use `-d`, which only succeeds for fully merged branches. If `-d` refuses, leave the branch alone and report it.
 2. **Never** delete the default branch (`main` or `master`), the current branch, or any branch listed as `protected` in repo config.
-3. **Never** touch remote branches. This command only operates on local refs.
-4. **Never** run `git reset --hard`, `git clean -fd`, or any other destructive operation. Branch deletion only.
-5. If the working tree has uncommitted changes, **stop** and report — do not switch branches.
+3. **Never** delete release-line branches. This includes:
+   - Anything matching `release/*` (e.g. `release/2026.04`, `release/v3`)
+   - Version-style branches matching `^v?\d+(\.(\d+|x))+$` (e.g. `1.x`, `1.0.x`, `2.1.3`, `v4.x.x`)
+   These are long-lived integration / maintenance lines and must be preserved even when fully merged into the default branch.
+4. **Never** touch remote branches. This command only operates on local refs.
+5. **Never** run `git reset --hard`, `git clean -fd`, or any other destructive operation. Branch deletion only.
+6. If the working tree has uncommitted changes, **stop** and report — do not switch branches.
 
 ## Procedure
 
@@ -69,7 +73,9 @@ From that list, exclude:
 - `$DEFAULT_BRANCH` itself
 - `main` and `master` (always — even if not the default)
 - The current branch (should already be `$DEFAULT_BRANCH` at this point, but double-check)
-- Anything that looks like a long-lived line (`develop`, `release/*`, `staging`, `production`) — skip with a note rather than delete
+- Any `release/*` branch (e.g. `release/2026.04`) — always skip, regardless of merge status
+- Any version-style branch matching `^v?\d+(\.(\d+|x))+$` — e.g. `1.x`, `1.0.x`, `2.1.3`, `v4.x.x` — always skip
+- Anything else that looks like a long-lived line (`develop`, `staging`, `production`) — skip with a note rather than delete
 
 ### 5. Delete each remaining branch
 
@@ -95,7 +101,9 @@ If nothing was deleted, say: "Already clean — no merged branches to remove."
 
 ## Examples of branches to skip with a reason
 
-- `develop`, `release/*`, `staging`, `production` — long-lived integration branches
+- `release/*` (e.g. `release/2026.04`) — release line, always preserved
+- Version-style branches like `1.x`, `1.0.x`, `2.1.3`, `v4.x.x` — release/maintenance lines, always preserved
+- `develop`, `staging`, `production` — long-lived integration branches
 - A branch whose name matches `wip/*` or contains `do-not-delete` — author flagged it
 - Any branch `-d` refused — unmerged commits
 
