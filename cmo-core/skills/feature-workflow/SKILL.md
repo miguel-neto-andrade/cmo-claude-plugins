@@ -1,18 +1,19 @@
 ---
 name: feature-workflow
-description: End-to-end feature delivery from spec to open PR — plan, implement, run project-analyzer + code-reviewer in parallel on the resulting diff, gate on Critical/High findings, then push and open the PR via /pr. Use ONLY when the user describes new functionality to build from scratch and wants it shipped. DO NOT trigger for tweaks, single-line fixes, refactors of existing code, isolated bug fixes, exploratory questions, debugging, or read-only tasks.
+description: End-to-end feature delivery — plan, implement, run project-analyzer + code-reviewer in parallel on the diff, gate on Critical/High findings, push, and open a PR via /pr. Trigger this skill whenever the user asks to add, build, create, implement, or ship a new capability (endpoint, page, screen, command, module, feature) — even when they don't explicitly say "open a PR" or "ship it", because shipping is the default outcome for feature work in C-Mo repos. Also trigger when the user wants to run multiple features in parallel from one session — this skill includes a detached mode that spawns a background agent in an isolated worktree so the main thread stays free. Skip only when the request is clearly a one-line tweak, a pure refactor with no new behaviour, a bug fix with no new capability, debugging, or a read-only question.
 ---
 
 # Feature Workflow
 
-End-to-end orchestration for shipping a new feature in one pass. Loads automatically when the user describes a new capability they want built-and-shipped. The skill defines a procedure — the model executes it.
+End-to-end orchestration for shipping a new feature. The skill defines a procedure — the model executes it. The procedure runs in one of three modes; pick the right one before starting.
 
 ## When this skill applies
 
 USE when:
-- The user describes a new capability to be built ("add an X endpoint", "build a Y page", "implement Z").
-- The user expects the work to land as an open PR by the end of the conversation.
+- The user describes a new capability to be built ("add an X endpoint", "build a Y page", "implement Z", "create a new module that does …").
+- The user wants the work to land as a PR (which is the default for feature work — don't require them to spell it out).
 - The change is non-trivial (multiple files or a coherent unit of behaviour).
+- The user asks for multiple features in parallel from a single session — use detached mode (see below).
 
 DO NOT USE when:
 - The change is a tweak, typo, or one-line fix — just edit and commit.
@@ -23,18 +24,31 @@ DO NOT USE when:
 
 If you're unsure whether to engage, ask the user once. Don't run the procedure on a maybe.
 
+## Mode selection
+
+Pick exactly one before step 1:
+
+| Mode | When to pick it | Where the work runs | Main session |
+|---|---|---|---|
+| **Inline** *(default)* | Single feature, user is watching, current branch is the right place to commit. | Current Claude Code session, current branch. | Blocked for the duration. |
+| **Attached worktree** | Single feature, user wants the main checkout untouched (e.g., they're juggling other work locally), and is happy to wait. Triggers: "in a worktree", "isolated", "use a worktree". | Current session, inside a worktree created with `EnterWorktree`. | Blocked for the duration. |
+| **Detached worktree** *(parallel features, non-blocking)* | User wants to launch one or more features and **keep using the main session** (ask status questions, fire more features, do other work). Triggers: "in parallel", "in the background", "detached", "fire and forget", `--background`, `--detached`, or two+ feature requests in a single ask. | Background `Agent` with `isolation: "worktree"` and `run_in_background: true`. The agent loads this skill and runs the inline procedure inside its own worktree. | **Free.** Main session returns immediately; status is queried via `TaskList` / `TaskGet` / `TaskOutput`. |
+
+When the user's intent is ambiguous between attached worktree and detached worktree — e.g., they say "in a worktree" without saying "in parallel" — default to **attached** and mention detached mode is available if they want the main thread free.
+
 ## Source of truth
 
 The conventions skills (`python-conventions`, `dotnet-conventions`, `vue-conventions`, `react-conventions`, `firmware-conventions`, etc.) are the **authoritative project conventions**. Both review agents in step 5 are passed the same list of conventions skills you loaded in step 3, so they can't disagree with each other or with your implementation. When generic best practice and a loaded conventions skill conflict, the skill wins.
 
-## Isolation mode (parallel features)
+## Attached worktree mode
 
-When the user wants to build a feature without touching their main checkout — typically to ship multiple features in parallel from separate Claude Code sessions — they can request **isolation mode**. Treat any of these phrases in the feature request as the trigger:
+When the user wants the main checkout untouched but is happy to wait — typically because they're juggling other local work and don't want the branch state to move — they can request **attached worktree** mode. Triggers:
 
 - "in a worktree" / "use a worktree" / "worktree mode"
 - "in isolation" / "isolated" / "isolated mode"
-- "in parallel" (when context makes clear they mean parallel *feature* work, not parallel agent invocation)
-- Flag-style: `--worktree`, `--isolated`, `--parallel`
+- Flag-style: `--worktree`, `--isolated`
+
+(If the user also says "in parallel", "in the background", or "detached", jump to the next section — that's a different mode.)
 
 When the trigger is present, perform these extra steps **before step 1 of the procedure**. (This section is project-instruction-directed worktree use, which is the supported path for `EnterWorktree`.)
 
@@ -60,7 +74,92 @@ Steps 1–8 below execute **inside the worktree**. The branch `EnterWorktree` cr
 - Switch back to the parent directory and leave the worktree intact → they ask to exit, you call `ExitWorktree(action: "keep")`.
 - Discard it entirely (PR closed without merge, work abandoned) → they ask to remove, you call `ExitWorktree(action: "remove")`. If uncommitted work or unmerged commits exist, the tool refuses; surface what would be lost and confirm before re-invoking with `discard_changes: true`.
 
-This is what makes parallel features work: each Claude Code session runs feature-workflow in its own worktree, the main checkout never moves, and the user controls cleanup per worktree.
+## Detached worktree mode (parallel, non-blocking)
+
+When the user wants to launch one or more features **without blocking the main session**, run them as background subagents in their own worktrees. This is the right mode whenever the user wants to ask "what's the state of the agents?" mid-flight or fire several features at once. Triggers:
+
+- "in parallel" (referring to parallel feature work)
+- "in the background" / "background mode" / "detached"
+- "fire and forget" / "don't wait" / "non-blocking"
+- Flag-style: `--background`, `--detached`, `--parallel-background`
+- Two or more distinct features in a single ask (treat as detached by default unless the user says otherwise).
+
+### A. For each feature, spawn one background agent
+
+Build a feature scope summary (1–3 sentences, plus any constraints the user gave) and a kebab-case slug for the branch (`feature/<slug>`). Then call `Agent` like this — one call per feature, **all in the same message** when the user requested multiple, so they kick off in parallel:
+
+```
+Agent(
+  description: "Feature workflow: <short scope>",
+  subagent_type: "general-purpose",
+  isolation: "worktree",
+  run_in_background: true,
+  prompt: """
+    You are running the cmo-core feature-workflow procedure in a detached
+    worktree. The harness has already placed you inside an isolated worktree
+    branched from the parent session's HEAD — do NOT call EnterWorktree.
+
+    1. Load the cmo-core:feature-workflow skill via the Skill tool.
+    2. Execute its inline procedure (steps 1–8 under "Procedure"), but:
+       - Skip the "Attached worktree mode" section entirely — you are already
+         in a worktree, created with the branch name below.
+       - Branch name to use for commits and the PR: feature/<slug>
+       - If step 1's repo-state check complains that CURRENT == DEFAULT_BRANCH,
+         create and switch to feature/<slug> first, then continue.
+    3. Open the PR at the end and return the URL plus a one-paragraph summary
+       of what shipped.
+
+    Feature to build:
+    <user's feature description, verbatim>
+
+    Constraints / acceptance criteria the user mentioned:
+    <bullet list, or "none stated">
+  """
+)
+```
+
+Notes:
+
+- `isolation: "worktree"` is the *Agent-tool* form of worktree isolation; it's distinct from `EnterWorktree`. Both produce a worktree, but only `EnterWorktree` moves the current session. The agent form is what you want for detached mode.
+- `run_in_background: true` is non-negotiable for this mode — without it the main session blocks.
+- Use `subagent_type: "general-purpose"` so the agent has the full toolset (it needs `Skill`, `Agent`, `Bash`, `Edit`, `Write`, etc.).
+- Do **not** wrap multiple features in a single agent. One agent per feature keeps failures isolated and lets the user kill or query each independently.
+
+### B. Return control to the user immediately
+
+After spawning, summarise what's running and how to query it. Example:
+
+```
+Launched 2 features in detached worktrees:
+
+  1. agent <task-id-a> — feature/widget-csv-export
+  2. agent <task-id-b> — feature/widget-pdf-export
+
+Both are running in the background. You can keep using this session.
+Ask "how are the agents doing?" any time and I'll check `TaskList` for status.
+You'll also get a notification when each one finishes.
+```
+
+Then stop. Do not poll, sleep, or check progress on your own — the harness sends a notification when each background task completes.
+
+### C. Responding to status questions
+
+When the user asks something like "how's it going?", "what's the state of the agents?", "is the first one done?", "show me the PR for the second one":
+
+1. Call `TaskList` to enumerate active tasks.
+2. For each one the user is asking about (or all of them if the question is broad), call `TaskGet` to get the subject/status, and `TaskOutput(block: false)` if they want the current stdout/transcript.
+3. Report concisely: which agents are still running, which finished, and any PR URLs that have come through.
+
+Do not call `TaskOutput` with `block: true` on a running task in response to a status question — that defeats the point of detached mode. Only block when the user explicitly asks "wait for it" or you need the final output to act on it.
+
+### D. Cleanup is still user-initiated
+
+Each detached agent ends in its own worktree, which persists after the PR opens (same contract as attached mode). The user controls cleanup per worktree. When they ask to exit one:
+
+- "keep the worktree for feature/X" → call `ExitWorktree(action: "keep")` scoped to that worktree.
+- "remove the worktree for feature/X" → call `ExitWorktree(action: "remove")`, surfacing any uncommitted work first.
+
+Never call `ExitWorktree` on your own.
 
 ## Procedure
 
@@ -197,14 +296,14 @@ End with:
 ```
 Feature shipped (PR open, awaiting review).
 Branch:   <CURRENT>
-Worktree: <path>  (only when isolation mode was used)
+Worktree: <path>  (only when attached or detached worktree mode was used)
 Skills:   <comma-separated SKILL_LIST>
 Review:   project-analyzer (<X findings>) + code-reviewer (<Y findings>) — verdict: <PASS|WARN|BLOCK>
 PR:       <pr-url>
 Next:     teammate reviews and merges
 ```
 
-If isolation mode was used, also remind the user: "The worktree stays open until you ask to exit it — say 'exit the worktree, keep it' or 'exit and remove the worktree' when you're done." Omit the Worktree line entirely when not in isolation mode.
+If attached worktree mode was used, also remind the user: "The worktree stays open until you ask to exit it — say 'exit the worktree, keep it' or 'exit and remove the worktree' when you're done." Detached worktree runs already include this reminder in the background agent's final report; the main session should pass it through. Omit the Worktree line entirely when running inline.
 
 If the gate BLOCKED at step 6 and you've already iterated, say so explicitly — list the rounds. If the user opted to "proceed with High issues", note the count in the PR body so the reviewer sees what was deferred.
 
