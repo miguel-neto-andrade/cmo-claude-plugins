@@ -8,7 +8,7 @@
     {
       "name": "cmo-core",
       "source": "./cmo-core",
-      "description": "General code architecture, code review, and git operations — universal coding-standards, testing-standards (tier model + two-level Jira traceability + parallelism), security review, code-review and project-analysis agents. /feature orchestrates analyzer + reviewer in parallel and hands off to /pr.",
+      "description": "General code architecture, code review, and git operations — universal coding-standards, testing-standards (tier model + two-level Jira traceability + parallelism), security review, code-review and project-analysis agents. feature-workflow skill auto-triggers on feature requests and orchestrates plan → implement → analyzer + reviewer in parallel → /pr.",
       "version": "0.3.0"
     },
     {

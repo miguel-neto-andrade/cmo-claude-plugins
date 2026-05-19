@@ -27,7 +27,7 @@ Store the resolved scope (directory path or "Full project") and the aspect filte
 
 ## Conventions skills (authoritative)
 
-If the invocation prompt lists explicit conventions skills (e.g., when called from `/feature`), load each one before Phase 1 and treat its rules as the **authoritative project conventions**. Do not flag patterns those skills explicitly prescribe — when generic best practice and a loaded conventions skill disagree, the loaded skill wins.
+If the invocation prompt lists explicit conventions skills (e.g., when called from the `feature-workflow` skill), load each one before Phase 1 and treat its rules as the **authoritative project conventions**. Do not flag patterns those skills explicitly prescribe — when generic best practice and a loaded conventions skill disagree, the loaded skill wins.
 
 If no explicit skill list is provided, fall back to detecting the stack in Phase 1 and loading the matching skill yourself (same mapping the `skill-reminder` hook uses).
 

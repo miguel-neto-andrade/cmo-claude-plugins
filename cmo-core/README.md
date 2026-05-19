@@ -8,20 +8,20 @@ Language-agnostic plugin for the cmo-claude-plugins marketplace. Provides code r
 |---|---|---|
 | Agent | `code-reviewer` | Reviews diffs for security, quality, architecture; confidence-filtered findings |
 | Agent | `project-analyzer` | Multi-phase analysis (architecture, patterns, smells, errors, coupling, security) |
-| Command | `/feature` | End-to-end finishing: detect conventions skills from the diff, run analyzer + reviewer **in parallel**, then open the PR via `/pr` |
 | Command | `/clear-repo` | Switch to default branch and delete every merged local branch |
 | Command | `/pr` | Push branch and open a PR — never merges; reviewer handles that |
 | Command | `/create-jira-task` | Create a sized, assigned, sprinted Jira task via REST API |
 | Command | `/upgrade-documentation` | Upgrade README + architectural diagrams to the C-Mo standard (IEC 62304 notation) |
+| Skill | `feature-workflow` | End-to-end feature delivery — auto-triggers on "build/add/implement X" prompts. Plan → load conventions → implement → run analyzer + reviewer **in parallel** on the diff → gate on Critical/High → hand off to `/pr`. |
 | Skill | `coding-standards` | SOLID + Fowler smells + clean code (universal) |
 | Skill | `testing-standards` | Tier structure, two-level Jira traceability (Task / Requirement), test independence and parallelism, scenario coverage (universal) |
 | Skill | `git-operations` | Conventional commits, no AI attribution, branch hygiene |
 | Skill | `security-review` | Secrets, input validation, SQL injection, authz, XSS, CSRF, rate limiting |
 | Hook | `skill-reminder` | UserPromptSubmit hook — inspects the branch diff and emits a targeted list of skills to load (e.g., `coding-standards` + `python-conventions` + `git-operations` for a Python diff). Falls back to a generic reminder outside git repos or when the branch is clean. |
 
-## How `/feature` keeps reviews aligned with conventions
+## How `feature-workflow` keeps reviews aligned with conventions
 
-The skill-reminder hook, the `/feature` command, and the two review agents all share one source of truth for "what counts as a project convention": the conventions skills (`python-conventions`, `dotnet-conventions`, `vue-conventions`, etc.). The hook derives a skill list from the diff, `/feature` passes that same list into both review agents in parallel, and the agents are instructed to treat those skills as authoritative — so the analyzer can't flag a pattern as a smell that the conventions skill explicitly prescribes. If the conventions and the analyzer ever disagree, the conventions win and the analyzer's rule is the one that needs updating.
+The skill-reminder hook, the `feature-workflow` skill, and the two review agents all share one source of truth for "what counts as a project convention": the conventions skills (`python-conventions`, `dotnet-conventions`, `vue-conventions`, etc.). The hook surfaces the right list for the diff at hand, `feature-workflow` loads that same list before implementing and passes it into both review agents in parallel, and the agents are instructed to treat those skills as authoritative — so the analyzer can't flag a pattern as a smell that the conventions skill explicitly prescribes. If the conventions and the analyzer ever disagree, the conventions win and the analyzer's rule is the one that needs updating.
 
 ## Setup
 

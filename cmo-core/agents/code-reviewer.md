@@ -24,7 +24,7 @@ Skills are located under `~/.claude/` — to load a skill by name, search for `~
 
 ### Authoritative list (from the invoker)
 
-If the invocation prompt lists explicit conventions skills (e.g., when called from `/feature`), **use that list verbatim** — load each named skill and skip the file-extension table below. The invoker has already inspected the diff and the repo, and its list takes precedence over heuristic detection. Treat each loaded skill's rules as the authoritative project conventions: do not flag a pattern as a smell when the loaded skill prescribes it.
+If the invocation prompt lists explicit conventions skills (e.g., when called from the `feature-workflow` skill), **use that list verbatim** — load each named skill and skip the file-extension table below. The invoker has already inspected the diff and the repo, and its list takes precedence over heuristic detection. Treat each loaded skill's rules as the authoritative project conventions: do not flag a pattern as a smell when the loaded skill prescribes it.
 
 ### Fallback: derive from the diff yourself
 
