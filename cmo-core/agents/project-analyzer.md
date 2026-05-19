@@ -25,6 +25,12 @@ Perform a comprehensive code quality analysis using a three-phase approach. Desi
 
 Store the resolved scope (directory path or "Full project") and the aspect filter (if any) for use in all phases.
 
+## Conventions skills (authoritative)
+
+If the invocation prompt lists explicit conventions skills (e.g., when called from `/feature`), load each one before Phase 1 and treat its rules as the **authoritative project conventions**. Do not flag patterns those skills explicitly prescribe — when generic best practice and a loaded conventions skill disagree, the loaded skill wins.
+
+If no explicit skill list is provided, fall back to detecting the stack in Phase 1 and loading the matching skill yourself (same mapping the `skill-reminder` hook uses).
+
 ---
 
 ## Phase 1 — Discovery
@@ -47,6 +53,7 @@ Launch **all applicable agents in a single message** (6 agents if no aspect filt
 Include in every agent's prompt:
 - The language/framework/structure discovered in Phase 1
 - The scoped directory (if provided via `$ARGUMENTS`)
+- The conventions skills loaded above (if any) — the agent must respect their rules and not flag prescribed patterns
 - Instruction to use Glob, Grep, and Read for targeted analysis
 - Instruction to return **max 10 findings** (unless running as the sole aspect agent — then up to 20)
 - Each finding must include: `file_path:line_number`, severity (`Critical`/`High`/`Medium`/`Low`), the violated principle with its source reference (e.g., "SRP — Clean Code Ch.10"), and a concrete recommendation

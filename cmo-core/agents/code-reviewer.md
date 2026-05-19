@@ -22,16 +22,27 @@ When invoked:
 
 Skills are located under `~/.claude/` — to load a skill by name, search for `~/.claude/**/skills/{skill-name}/SKILL.md` using Glob, then read it.
 
-Based on the file extensions and markers in the diff, load the matching skill(s) and verify the changes comply with their conventions. A single diff often matches multiple rows — load all that apply.
+### Authoritative list (from the invoker)
+
+If the invocation prompt lists explicit conventions skills (e.g., when called from `/feature`), **use that list verbatim** — load each named skill and skip the file-extension table below. The invoker has already inspected the diff and the repo, and its list takes precedence over heuristic detection. Treat each loaded skill's rules as the authoritative project conventions: do not flag a pattern as a smell when the loaded skill prescribes it.
+
+### Fallback: derive from the diff yourself
+
+When no explicit skill list was provided, map the changed files to skills using the same rules the `skill-reminder` hook uses:
 
 | Changed files match | Skill(s) to load |
 |---|---|
-| `tests/**`, `*Tests.cs`, `*Tests.fs`, `test_*.py`, `*.spec.ts`, `*.test.ts`, `*Test.cpp`, `*Test.cs` | `testing-standards` (universal) |
-| `*.cs`, `*.csproj`, `*.sln` (production code) | `dotnet-conventions` |
+| any test path (`tests/**`, `__tests__/**`, `*Tests.cs`, `test_*.py`, `*_test.py`, `*.spec.ts`, `*.test.ts`, `*.spec.tsx`, `*.test.tsx`) | `testing-standards` (universal) |
+| `*.cs`, `*.csproj`, `*.sln`, `*.slnx` (production code) | `dotnet-conventions` |
 | `*.cs` under `tests/**` or matching `*Tests.cs` | `dotnet-testing` |
-| `*.vue`, `*.ts`, `*.tsx` | `vue-conventions` |
+| `*.vue` | `vue-conventions` |
+| `*.tsx`, `*.jsx` | `react-conventions` |
+| `*.ts`, `*.js` — disambiguate by `package.json` deps (`react` → `react-conventions`; `vue` → `vue-conventions`) | one of the above |
+| `*.scss`, `*.css` | `bootstrap-scss` |
 | `*.py`, `pyproject.toml`, `requirements.txt` | `python-conventions` |
-| `*.c`, `*.h`, `*.cpp`, `*.hpp`, `platformio.ini`, `CMakeLists.txt` | `firmware-conventions` |
+| `*.c`, `*.h`, `*.cpp`, `*.hpp`, `*.ino`, `platformio.ini` (or `CMakeLists.txt` with an embedded marker — `STM32`/`ESP-IDF`/`Zephyr`/`nRF`/`FreeRTOS`) | `firmware-conventions` |
+
+Always pair stack skills with `coding-standards`; pair test skills with `testing-standards`.
 
 Combined-skill examples:
 - .NET production code changes: `dotnet-conventions`.
