@@ -7,7 +7,7 @@ This repo is a **Claude Code plugin marketplace**, not application code. Everyth
 Five plugins published from one marketplace:
 
 - `cmo-core` — language-agnostic. **Fully written.** Agents, commands, skills, and a `UserPromptSubmit` hook that reminds the model to load skills.
-- `cmo-python`, `cmo-frontend`, `cmo-dotnet`, `cmo-firmware` — stack-specific. **Scaffolds only.** Files exist with `TODO` bodies; real content gets filled in by Miguel as conventions stabilise.
+- `cmo-python`, `cmo-frontend`, `cmo-dotnet`, `cmo-firmware` — stack-specific. **Skills are being filled in; agents and commands remain scaffolds.** Current state (verify against the actual files — this note may lag): `cmo-frontend` has 6 filled skills and no agents/commands directories yet; `cmo-dotnet` has 2 filled skills plus a TODO reviewer agent and TODO `/dn-new-controller` command; `cmo-firmware` has 3 filled skills plus a TODO reviewer agent and TODO `/fw-build` command; `cmo-python` has 1 filled skill plus a TODO reviewer agent and TODO `/py-test` command. The top-level `README.md` plugin table and per-plugin `README.md`s are the authoritative status.
 
 The top-level `.claude-plugin/marketplace.json` is the registry — every plugin must be listed there to be installable.
 
