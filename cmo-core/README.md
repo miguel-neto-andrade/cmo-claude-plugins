@@ -12,7 +12,7 @@ Language-agnostic plugin for the cmo-claude-plugins marketplace. Provides code r
 | Command | `/pr` | Push branch and open a PR — never merges; reviewer handles that |
 | Command | `/create-jira-task` | Create a sized, assigned, sprinted Jira task via REST API |
 | Command | `/upgrade-documentation` | Upgrade README + architectural diagrams to the C-Mo standard (IEC 62304 notation) |
-| Skill | `feature-workflow` | End-to-end feature delivery — auto-triggers on "build/add/implement X" prompts. Plan → load conventions → implement → run analyzer + reviewer **in parallel** on the diff → gate on Critical/High → hand off to `/pr`. |
+| Skill | `feature-workflow` | End-to-end feature delivery — auto-triggers on "build/add/implement X" prompts. Plan → load conventions → implement → run analyzer + reviewer **in parallel** on the diff → gate on Critical/High → hand off to `/pr`. Supports an **isolation mode** (trigger phrases: "in a worktree", "isolated", `--worktree`) that runs the whole flow inside a git worktree so multiple features can be shipped in parallel from separate sessions. |
 | Skill | `coding-standards` | SOLID + Fowler smells + clean code (universal) |
 | Skill | `testing-standards` | Tier structure, two-level Jira traceability (Task / Requirement), test independence and parallelism, scenario coverage (universal) |
 | Skill | `git-operations` | Conventional commits, no AI attribution, branch hygiene |

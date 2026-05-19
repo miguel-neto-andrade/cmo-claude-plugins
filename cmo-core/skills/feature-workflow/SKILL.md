@@ -27,6 +27,41 @@ If you're unsure whether to engage, ask the user once. Don't run the procedure o
 
 The conventions skills (`python-conventions`, `dotnet-conventions`, `vue-conventions`, `react-conventions`, `firmware-conventions`, etc.) are the **authoritative project conventions**. Both review agents in step 5 are passed the same list of conventions skills you loaded in step 3, so they can't disagree with each other or with your implementation. When generic best practice and a loaded conventions skill conflict, the skill wins.
 
+## Isolation mode (parallel features)
+
+When the user wants to build a feature without touching their main checkout — typically to ship multiple features in parallel from separate Claude Code sessions — they can request **isolation mode**. Treat any of these phrases in the feature request as the trigger:
+
+- "in a worktree" / "use a worktree" / "worktree mode"
+- "in isolation" / "isolated" / "isolated mode"
+- "in parallel" (when context makes clear they mean parallel *feature* work, not parallel agent invocation)
+- Flag-style: `--worktree`, `--isolated`, `--parallel`
+
+When the trigger is present, perform these extra steps **before step 1 of the procedure**. (This section is project-instruction-directed worktree use, which is the supported path for `EnterWorktree`.)
+
+### A. Pick the base
+
+The worktree's branch is created from the parent session's current `HEAD`. Default behaviour: switch the parent session to the resolved default branch (`main`/`master`) and `git pull` first so the worktree starts from up-to-date upstream. If the parent session has uncommitted work, surface it and ask: stash, commit on the current branch, or proceed without switching base? Don't assume.
+
+### B. Enter the worktree
+
+Call `EnterWorktree` with a `name` derived from the feature scope using the `git-operations` branch convention (`feature/<slug>`, `fix/<slug>`, etc.). Slug = kebab-case of 2–4 keywords from the feature description. Example: feature description "add an endpoint for exporting widgets as CSV" → `name: "feature/widget-csv-export"`.
+
+The harness creates `.claude/worktrees/feature/widget-csv-export` with a fresh branch of the same name and switches the session into it.
+
+### C. Run the procedure inside the worktree
+
+Steps 1–8 below execute **inside the worktree**. The branch `EnterWorktree` created is the branch step 7's PR opens from. The conventions skill list, the parallel review pair, and the gate logic all behave identically — only the working directory has moved.
+
+### D. Don't auto-exit
+
+**Never call `ExitWorktree` on your own.** Per the tool's contract, exit must be user-initiated. After step 7 opens the PR, the worktree stays in place so the user can:
+
+- Keep working in it (follow-up commits, review feedback) — no action required.
+- Switch back to the parent directory and leave the worktree intact → they ask to exit, you call `ExitWorktree(action: "keep")`.
+- Discard it entirely (PR closed without merge, work abandoned) → they ask to remove, you call `ExitWorktree(action: "remove")`. If uncommitted work or unmerged commits exist, the tool refuses; surface what would be lost and confirm before re-invoking with `discard_changes: true`.
+
+This is what makes parallel features work: each Claude Code session runs feature-workflow in its own worktree, the main checkout never moves, and the user controls cleanup per worktree.
+
 ## Procedure
 
 Each step is a gate. Don't skip ahead.
@@ -162,11 +197,14 @@ End with:
 ```
 Feature shipped (PR open, awaiting review).
 Branch:   <CURRENT>
+Worktree: <path>  (only when isolation mode was used)
 Skills:   <comma-separated SKILL_LIST>
 Review:   project-analyzer (<X findings>) + code-reviewer (<Y findings>) — verdict: <PASS|WARN|BLOCK>
 PR:       <pr-url>
 Next:     teammate reviews and merges
 ```
+
+If isolation mode was used, also remind the user: "The worktree stays open until you ask to exit it — say 'exit the worktree, keep it' or 'exit and remove the worktree' when you're done." Omit the Worktree line entirely when not in isolation mode.
 
 If the gate BLOCKED at step 6 and you've already iterated, say so explicitly — list the rounds. If the user opted to "proceed with High issues", note the count in the PR body so the reviewer sees what was deferred.
 
