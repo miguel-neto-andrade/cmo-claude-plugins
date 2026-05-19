@@ -11,11 +11,17 @@ Language-agnostic plugin for the cmo-claude-plugins marketplace. Provides code r
 | Command | `/clear-repo` | Switch to default branch and delete every merged local branch |
 | Command | `/pr` | Push branch and open a PR — never merges; reviewer handles that |
 | Command | `/create-jira-task` | Create a sized, assigned, sprinted Jira task via REST API |
+| Command | `/upgrade-documentation` | Upgrade README + architectural diagrams to the C-Mo standard (IEC 62304 notation) |
+| Skill | `feature-workflow` | End-to-end feature delivery — auto-triggers on "build/add/implement X" prompts. Plan → load conventions → implement → run analyzer + reviewer **in parallel** on the diff → gate on Critical/High → hand off to `/pr`. Supports an **isolation mode** (trigger phrases: "in a worktree", "isolated", `--worktree`) that runs the whole flow inside a git worktree so multiple features can be shipped in parallel from separate sessions. |
 | Skill | `coding-standards` | SOLID + Fowler smells + clean code (universal) |
 | Skill | `testing-standards` | Tier structure, two-level Jira traceability (Task / Requirement), test independence and parallelism, scenario coverage (universal) |
 | Skill | `git-operations` | Conventional commits, no AI attribution, branch hygiene |
 | Skill | `security-review` | Secrets, input validation, SQL injection, authz, XSS, CSRF, rate limiting |
-| Hook | `skill-reminder` | UserPromptSubmit reminder listing all available skills |
+| Hook | `skill-reminder` | UserPromptSubmit hook — inspects the branch diff and emits a targeted list of skills to load (e.g., `coding-standards` + `python-conventions` + `git-operations` for a Python diff). Falls back to a generic reminder outside git repos or when the branch is clean. |
+
+## How `feature-workflow` keeps reviews aligned with conventions
+
+The skill-reminder hook, the `feature-workflow` skill, and the two review agents all share one source of truth for "what counts as a project convention": the conventions skills (`python-conventions`, `dotnet-conventions`, `vue-conventions`, etc.). The hook surfaces the right list for the diff at hand, `feature-workflow` loads that same list before implementing and passes it into both review agents in parallel, and the agents are instructed to treat those skills as authoritative — so the analyzer can't flag a pattern as a smell that the conventions skill explicitly prescribes. If the conventions and the analyzer ever disagree, the conventions win and the analyzer's rule is the one that needs updating.
 
 ## Setup
 
